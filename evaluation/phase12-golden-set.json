@@ -1,0 +1,22 @@
+[
+  {"question": "What is the purpose of the KnowledgeForge system?", "source": "README.md"},
+  {"question": "Why was Python and FastAPI selected?", "source": "docs/decisions.md"},
+  {"question": "What does the launch checklist require before production?", "source": "docs/launch-checklist.md"},
+  {"question": "How does account-agnostic security hardening work?", "source": "docs/security-hardening.md"},
+  {"question": "How are database migrations handled?", "source": "docs/migrations.md"},
+  {"question": "What is currently deferred in validation?", "source": "docs/validation-status.md"},
+  {"question": "What are the phases after the original implementation?", "source": "Plan.md"},
+  {"question": "What configuration controls application limits?", "source": "src/knowledgeforge/config.py"},
+  {"question": "How does the token bucket limiter reject requests?", "source": "src/knowledgeforge/limits.py"},
+  {"question": "Which fields are included in structured request logs?", "source": "src/knowledgeforge/observability.py"},
+  {"question": "What reliability behavior is provided for external calls?", "source": "src/knowledgeforge/reliability.py"},
+  {"question": "How are nearest chunks retrieved for a tenant?", "source": "src/knowledgeforge/retrieval/retrieve.py"},
+  {"question": "How is the grounding prompt constructed?", "source": "src/knowledgeforge/generation/prompt.py"},
+  {"question": "How are generated citations parsed?", "source": "src/knowledgeforge/generation/generate.py"},
+  {"question": "How are local deterministic embeddings generated?", "source": "src/knowledgeforge/ingestion/embed.py"},
+  {"question": "How does text chunking preserve page information?", "source": "src/knowledgeforge/ingestion/chunk.py"},
+  {"question": "How are ingestion jobs represented?", "source": "src/knowledgeforge/ingestion/jobs.py"},
+  {"question": "How does the worker process a cloud ingestion job?", "source": "src/knowledgeforge/worker/pipeline.py"},
+  {"question": "How are emulator cloud clients configured?", "source": "src/knowledgeforge/worker/cloud.py"},
+  {"question": "How is tenant identity validated in authentication?", "source": "src/knowledgeforge/security/auth.py"}
+]

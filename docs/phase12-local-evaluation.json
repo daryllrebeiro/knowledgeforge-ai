@@ -1,0 +1,345 @@
+{
+  "mode": "local",
+  "profiles": {
+    "baseline-500-100-vector": {
+      "hit_at_5": 0.35,
+      "hits": 7,
+      "total": 20,
+      "errors": [
+        {
+          "question": "What is the purpose of the KnowledgeForge system?",
+          "expected_source": "README.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/decisions.md,Plan.md,Plan.md,Plan.md"
+        },
+        {
+          "question": "What does the launch checklist require before production?",
+          "expected_source": "docs/launch-checklist.md",
+          "classification": "reranking-candidate",
+          "top_sources": "Plan.md,Plan.md,docs/decisions.md,src/knowledgeforge/generation/prompt.py,docs/decisions.md"
+        },
+        {
+          "question": "What is currently deferred in validation?",
+          "expected_source": "docs/validation-status.md",
+          "classification": "reranking-candidate",
+          "top_sources": "Plan.md,src/knowledgeforge/ingestion/embed.py,src/knowledgeforge/retrieval/retrieve.py,docs/migrations.md,docs/security-hardening.md"
+        },
+        {
+          "question": "What configuration controls application limits?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/security-hardening.md,Plan.md,Plan.md,Plan.md,Plan.md"
+        },
+        {
+          "question": "How does the token bucket limiter reject requests?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/decisions.md,docs/decisions.md,docs/validation-status.md"
+        },
+        {
+          "question": "Which fields are included in structured request logs?",
+          "expected_source": "src/knowledgeforge/observability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,docs/migrations.md,src/knowledgeforge/ingestion/embed.py,src/knowledgeforge/ingestion/chunk.py,src/knowledgeforge/generation/prompt.py"
+        },
+        {
+          "question": "What reliability behavior is provided for external calls?",
+          "expected_source": "src/knowledgeforge/reliability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "Plan.md,Plan.md,src/knowledgeforge/ingestion/embed.py,docs/decisions.md,src/knowledgeforge/ingestion/chunk.py"
+        },
+        {
+          "question": "How are nearest chunks retrieved for a tenant?",
+          "expected_source": "src/knowledgeforge/retrieval/retrieve.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/migrations.md,docs/security-hardening.md,README.md,docs/decisions.md,Plan.md"
+        },
+        {
+          "question": "How is the grounding prompt constructed?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,Plan.md,docs/decisions.md,docs/decisions.md"
+        },
+        {
+          "question": "How are local deterministic embeddings generated?",
+          "expected_source": "src/knowledgeforge/ingestion/embed.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/decisions.md,docs/migrations.md,Plan.md"
+        },
+        {
+          "question": "How does the worker process a cloud ingestion job?",
+          "expected_source": "src/knowledgeforge/worker/pipeline.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "Plan.md,docs/security-hardening.md,Plan.md,docs/decisions.md,README.md"
+        },
+        {
+          "question": "How are emulator cloud clients configured?",
+          "expected_source": "src/knowledgeforge/worker/cloud.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/validation-status.md,docs/migrations.md,Plan.md"
+        },
+        {
+          "question": "How is tenant identity validated in authentication?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/decisions.md,Plan.md,src/knowledgeforge/ingestion/embed.py"
+        }
+      ]
+    },
+    "baseline-500-100-hybrid": {
+      "hit_at_5": 0.3,
+      "hits": 6,
+      "total": 20,
+      "errors": [
+        {
+          "question": "What is the purpose of the KnowledgeForge system?",
+          "expected_source": "README.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/decisions.md,Plan.md,Plan.md,Plan.md"
+        },
+        {
+          "question": "What does the launch checklist require before production?",
+          "expected_source": "docs/launch-checklist.md",
+          "classification": "reranking-candidate",
+          "top_sources": "Plan.md,Plan.md,Plan.md,Plan.md,src/knowledgeforge/generation/prompt.py"
+        },
+        {
+          "question": "What is currently deferred in validation?",
+          "expected_source": "docs/validation-status.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,Plan.md,src/knowledgeforge/ingestion/embed.py,src/knowledgeforge/retrieval/retrieve.py,Plan.md"
+        },
+        {
+          "question": "What configuration controls application limits?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/security-hardening.md,Plan.md,Plan.md,Plan.md,Plan.md"
+        },
+        {
+          "question": "How does the token bucket limiter reject requests?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/validation-status.md,docs/decisions.md,docs/decisions.md"
+        },
+        {
+          "question": "Which fields are included in structured request logs?",
+          "expected_source": "src/knowledgeforge/observability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,docs/migrations.md,docs/validation-status.md,docs/validation-status.md,docs/decisions.md"
+        },
+        {
+          "question": "What reliability behavior is provided for external calls?",
+          "expected_source": "src/knowledgeforge/reliability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "Plan.md,Plan.md,docs/decisions.md,src/knowledgeforge/ingestion/embed.py,docs/decisions.md"
+        },
+        {
+          "question": "How are nearest chunks retrieved for a tenant?",
+          "expected_source": "src/knowledgeforge/retrieval/retrieve.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/migrations.md,docs/security-hardening.md,README.md,docs/decisions.md,Plan.md"
+        },
+        {
+          "question": "How is the grounding prompt constructed?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,Plan.md,docs/decisions.md,docs/decisions.md"
+        },
+        {
+          "question": "How are local deterministic embeddings generated?",
+          "expected_source": "src/knowledgeforge/ingestion/embed.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/decisions.md,Plan.md,docs/validation-status.md"
+        },
+        {
+          "question": "How are ingestion jobs represented?",
+          "expected_source": "src/knowledgeforge/ingestion/jobs.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/migrations.md,docs/validation-status.md,docs/decisions.md"
+        },
+        {
+          "question": "How does the worker process a cloud ingestion job?",
+          "expected_source": "src/knowledgeforge/worker/pipeline.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "Plan.md,Plan.md,docs/security-hardening.md,docs/decisions.md,docs/decisions.md"
+        },
+        {
+          "question": "How are emulator cloud clients configured?",
+          "expected_source": "src/knowledgeforge/worker/cloud.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/validation-status.md,Plan.md,Plan.md"
+        },
+        {
+          "question": "How is tenant identity validated in authentication?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/decisions.md,Plan.md,src/knowledgeforge/ingestion/embed.py"
+        }
+      ]
+    },
+    "large-800-150-vector": {
+      "hit_at_5": 0.4,
+      "hits": 8,
+      "total": 20,
+      "errors": [
+        {
+          "question": "What is the purpose of the KnowledgeForge system?",
+          "expected_source": "README.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,Plan.md,docs/security-hardening.md,Plan.md,Plan.md"
+        },
+        {
+          "question": "What does the launch checklist require before production?",
+          "expected_source": "docs/launch-checklist.md",
+          "classification": "reranking-candidate",
+          "top_sources": "Plan.md,Plan.md,src/knowledgeforge/generation/prompt.py,docs/decisions.md,Plan.md"
+        },
+        {
+          "question": "What is currently deferred in validation?",
+          "expected_source": "docs/validation-status.md",
+          "classification": "reranking-candidate",
+          "top_sources": "src/knowledgeforge/ingestion/embed.py,src/knowledgeforge/retrieval/retrieve.py,docs/migrations.md,docs/security-hardening.md,src/knowledgeforge/ingestion/chunk.py"
+        },
+        {
+          "question": "What configuration controls application limits?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/security-hardening.md,Plan.md,README.md,Plan.md,Plan.md"
+        },
+        {
+          "question": "How does the token bucket limiter reject requests?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/decisions.md,Plan.md,docs/validation-status.md"
+        },
+        {
+          "question": "Which fields are included in structured request logs?",
+          "expected_source": "src/knowledgeforge/observability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,docs/migrations.md,src/knowledgeforge/ingestion/embed.py,src/knowledgeforge/ingestion/chunk.py,src/knowledgeforge/generation/prompt.py"
+        },
+        {
+          "question": "What reliability behavior is provided for external calls?",
+          "expected_source": "src/knowledgeforge/reliability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "src/knowledgeforge/ingestion/embed.py,Plan.md,docs/decisions.md,Plan.md,src/knowledgeforge/ingestion/chunk.py"
+        },
+        {
+          "question": "How are nearest chunks retrieved for a tenant?",
+          "expected_source": "src/knowledgeforge/retrieval/retrieve.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/migrations.md,docs/security-hardening.md,README.md,docs/decisions.md,docs/launch-checklist.md"
+        },
+        {
+          "question": "How is the grounding prompt constructed?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/decisions.md,Plan.md,Plan.md"
+        },
+        {
+          "question": "How does the worker process a cloud ingestion job?",
+          "expected_source": "src/knowledgeforge/worker/pipeline.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "Plan.md,docs/security-hardening.md,docs/decisions.md,README.md,Plan.md"
+        },
+        {
+          "question": "How are emulator cloud clients configured?",
+          "expected_source": "src/knowledgeforge/worker/cloud.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/migrations.md,docs/validation-status.md,src/knowledgeforge/ingestion/chunk.py"
+        },
+        {
+          "question": "How is tenant identity validated in authentication?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,src/knowledgeforge/ingestion/embed.py,docs/decisions.md,docs/migrations.md"
+        }
+      ]
+    },
+    "large-800-150-hybrid": {
+      "hit_at_5": 0.35,
+      "hits": 7,
+      "total": 20,
+      "errors": [
+        {
+          "question": "What is the purpose of the KnowledgeForge system?",
+          "expected_source": "README.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,Plan.md,Plan.md,Plan.md,docs/security-hardening.md"
+        },
+        {
+          "question": "What does the launch checklist require before production?",
+          "expected_source": "docs/launch-checklist.md",
+          "classification": "reranking-candidate",
+          "top_sources": "Plan.md,Plan.md,Plan.md,src/knowledgeforge/generation/prompt.py,docs/decisions.md"
+        },
+        {
+          "question": "What is currently deferred in validation?",
+          "expected_source": "docs/validation-status.md",
+          "classification": "reranking-candidate",
+          "top_sources": "Plan.md,docs/security-hardening.md,src/knowledgeforge/ingestion/embed.py,src/knowledgeforge/retrieval/retrieve.py,docs/migrations.md"
+        },
+        {
+          "question": "What configuration controls application limits?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/security-hardening.md,Plan.md,Plan.md,Plan.md,Plan.md"
+        },
+        {
+          "question": "How does the token bucket limiter reject requests?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/validation-status.md,docs/decisions.md,Plan.md"
+        },
+        {
+          "question": "Which fields are included in structured request logs?",
+          "expected_source": "src/knowledgeforge/observability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,docs/migrations.md,docs/validation-status.md,Plan.md,docs/decisions.md"
+        },
+        {
+          "question": "What reliability behavior is provided for external calls?",
+          "expected_source": "src/knowledgeforge/reliability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "Plan.md,docs/decisions.md,Plan.md,src/knowledgeforge/ingestion/embed.py,Plan.md"
+        },
+        {
+          "question": "How are nearest chunks retrieved for a tenant?",
+          "expected_source": "src/knowledgeforge/retrieval/retrieve.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/migrations.md,docs/security-hardening.md,README.md,docs/decisions.md,Plan.md"
+        },
+        {
+          "question": "How is the grounding prompt constructed?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,Plan.md,docs/decisions.md,Plan.md"
+        },
+        {
+          "question": "How are ingestion jobs represented?",
+          "expected_source": "src/knowledgeforge/ingestion/jobs.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/migrations.md,docs/validation-status.md,docs/decisions.md"
+        },
+        {
+          "question": "How does the worker process a cloud ingestion job?",
+          "expected_source": "src/knowledgeforge/worker/pipeline.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "Plan.md,docs/security-hardening.md,docs/decisions.md,Plan.md,README.md"
+        },
+        {
+          "question": "How are emulator cloud clients configured?",
+          "expected_source": "src/knowledgeforge/worker/cloud.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,Plan.md,docs/validation-status.md,docs/migrations.md"
+        },
+        {
+          "question": "How is tenant identity validated in authentication?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/decisions.md,Plan.md,src/knowledgeforge/ingestion/embed.py"
+        }
+      ]
+    }
+  }
+}

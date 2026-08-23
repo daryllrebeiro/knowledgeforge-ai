@@ -1,0 +1,5 @@
+[
+  {"question": "What does the system use to produce grounded answers?", "document": "architecture.md"},
+  {"question": "Which operational controls help diagnose failures?", "document": "operations.md"},
+  {"question": "How is tenant identity protected?", "document": "security.md"}
+]
