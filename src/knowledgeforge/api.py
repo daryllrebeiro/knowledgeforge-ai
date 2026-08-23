@@ -2,7 +2,7 @@ import json
 from io import BytesIO
 from time import perf_counter
 from typing import Annotated
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 import psycopg
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
@@ -31,7 +31,8 @@ from knowledgeforge.ingestion.store import (
     store_document,
     tenant_usage,
 )
-from knowledgeforge.limits import limiter
+from knowledgeforge.limits import RedisTokenBucketLimiter, TokenBucketLimiter
+from knowledgeforge.limits import limiter as default_limiter
 from knowledgeforge.observability import request_id
 from knowledgeforge.retrieval.retrieve import retrieve_chunks
 from knowledgeforge.security.auth import (
@@ -43,6 +44,13 @@ from knowledgeforge.security.auth import (
 from knowledgeforge.worker.cloud import CloudStorageClient, PubSubPublisher
 
 router = APIRouter()
+limiter: TokenBucketLimiter | RedisTokenBucketLimiter = default_limiter
+
+
+def _client_subject(request: Request, purpose: str) -> UUID:
+    """Create a non-account auth limiter key from the caller address."""
+    address = request.client.host if request.client is not None else "unknown"
+    return uuid5(NAMESPACE_URL, f"knowledgeforge:{purpose}:{address}")
 
 
 class DocumentUploadResponse(BaseModel):
@@ -106,8 +114,13 @@ class TokenResponse(BaseModel):
 
 
 @router.post("/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-def register(request: RegisterRequest) -> TokenResponse:
+def register(request: RegisterRequest, http_request: Request) -> TokenResponse:
     settings = get_settings()
+    limiter.check(
+        _client_subject(http_request, "register"),
+        "auth",
+        settings.auth_rate_limit_per_minute,
+    )
     try:
         with psycopg.connect(settings.database_url) as connection:
             with connection.transaction():
@@ -135,8 +148,13 @@ def register(request: RegisterRequest) -> TokenResponse:
 
 
 @router.post("/auth/login", response_model=TokenResponse)
-def login(request: LoginRequest) -> TokenResponse:
+def login(request: LoginRequest, http_request: Request) -> TokenResponse:
     settings = get_settings()
+    limiter.check(
+        _client_subject(http_request, "login"),
+        "auth",
+        settings.auth_rate_limit_per_minute,
+    )
     with psycopg.connect(settings.database_url) as connection:
         with connection.cursor() as cursor:
             cursor.execute(

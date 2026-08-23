@@ -355,3 +355,97 @@ knowledgeforge-ai/
 3. **Every phase has a Definition of Done that references tests or measurements, not "it seems to work.**" This is what makes the plan executable by an agent without human judgment calls at each step.
 4. **Observability (Phase 6) comes before productization (Phase 7)** — you need to be able to see what's happening before you expose the system to users you can't directly watch.
 5. **Load testing and IaC are last, deliberately** — they're only meaningful once the system they're testing/reproducing is actually feature-complete.
+
+---
+
+## Status checkpoint
+
+Phases 0–8 are implemented at the code level: CI passes lint, mypy, and the test suite;
+Terraform formats and validates. Nothing has run against real infrastructure yet: no live
+Postgres/pgvector, real Gemini traffic, GCP deployment, load test, backup restore,
+dead-letter trigger, or production smoke test. The golden set is still a fixture rather
+than the planned 20–40-question real corpus.
+
+This means the implementation is internally validated but not production-proven.
+
+The next required phases are:
+
+- **Phase 8.5 — Real-environment validation:** deferred until a GCP project and
+  credentials are intentionally attached.
+- **Phase 9 — Account-agnostic hardening:** may proceed locally and in CI without
+  provisioning users, accounts, projects, or external cloud services.
+
+## Phase 8.5 — Real-environment validation (blocking)
+
+**Goal:** verify every Phase 0–8 claim against real infrastructure with recorded evidence.
+
+### Tasks, in order
+
+1. Provision a GCP project and enable Cloud Run, Cloud SQL, Cloud Storage, Pub/Sub,
+   Secret Manager, and Cloud Monitoring APIs.
+2. Run `terraform apply` against staging and fix issues that validation cannot catch,
+   including IAM, quotas, and naming collisions.
+3. Store the Gemini API key in Secret Manager and verify Cloud Run access.
+4. Apply migrations 001–006 to real Cloud SQL and verify their execution order and
+   idempotency.
+5. Deploy the API and worker to staging Cloud Run.
+6. Run the staging smoke test: register, login, upload a real PDF, poll to `ready`, ask a
+   real question, and verify a cited answer.
+7. Build the real 20–40-question golden set and record real Hit@5 in
+   `docs/decisions.md`.
+8. Force a malformed Pub/Sub job, verify dead-letter delivery, and confirm the alert.
+9. Restore a Cloud SQL backup to a new instance and verify data integrity.
+10. Run Locust against staging for `/ask` and `/documents`; record the concurrency ceiling
+    against the Phase 6 SLOs.
+11. Fix issues found by load testing and operational drills.
+12. Promote through the manual production gate and repeat the smoke test.
+
+### Evidence requirements
+
+Every task requires an entry in `docs/validation-status.md` containing command output,
+logs, screenshots, or measured numbers. Failures and fixes must be recorded rather than
+silently retried.
+
+### Definition of Done
+
+- [ ] All 12 tasks have evidence entries.
+- [ ] Real Hit@5 is recorded.
+- [ ] Dead-letter alert fired on a real event.
+- [ ] Backup restore succeeded with a data-integrity check.
+- [ ] Load-test concurrency ceiling is recorded against all three SLOs.
+- [ ] Production smoke test passes.
+
+## Phase 9 — Post-launch hardening
+
+The account-agnostic portions may proceed before Phase 8.5. Cloud-account work remains
+deferred and must not create users, authenticate accounts, or apply infrastructure.
+
+### Phase 9 account-agnostic progress
+
+- [x] Caller-based authentication rate limiting
+- [x] Deny-by-default CORS configuration
+- [x] Baseline browser security response headers
+- [x] `/v1` compatibility routes and OpenAPI coverage
+- [x] Local dependency-audit and CodeQL workflow definitions
+- [x] Redis-backed shared rate limiting implementation with local fallback
+- [ ] Live cloud monitoring, scanning, backup drills, and IAM review (deferred)
+
+### Scope
+
+1. Security review, dependency scanning, container scanning, adversarial staging tests,
+   CORS tightening, and auth rate limits.
+2. Real Postgres/pgvector CI integration tests, including two-tenant isolation and
+   migration safety checks.
+3. Evidence-based performance tuning for pgvector, Cloud Run, and database pooling.
+4. Replace the in-memory limiter with shared Redis/Memorystore before horizontal scaling.
+5. Cost optimization through embedding caching, right-sizing, and billing alerts.
+6. Real Cloud Monitoring dashboards for SLOs, costs, and dead-letter depth.
+7. Scheduled backup restore-and-verify automation with measured RTO/RPO.
+8. Incident drills for Gemini outage, Cloud SQL failover, and Pub/Sub backlog.
+9. Recurring dependency/container scans with a documented patching SLA.
+10. `/v1` API versioning and backward-compatibility contract tests.
+
+### Definition of Done
+
+Each hardening area must have an evidence entry in `docs/decisions.md` or
+`docs/validation-status.md`, with before/after measurements where applicable.

@@ -25,7 +25,10 @@ class Settings(BaseSettings):
     async_ingestion: bool = False
     ask_rate_limit_per_minute: int = 60
     document_rate_limit_per_minute: int = 10
+    auth_rate_limit_per_minute: int = 10
     max_documents_per_tenant: int = 100
+    cors_allowed_origins: str = ""
+    redis_url: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 

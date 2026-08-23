@@ -43,4 +43,10 @@ async def log_request(request: Request, call_next: Any) -> Any:
         )
     )
     response.headers["X-Request-ID"] = str(current_request_id)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if request.url.path.startswith("/auth/"):
+        response.headers["Cache-Control"] = "no-store"
     return response
