@@ -34,6 +34,17 @@ def test_upload_document_contract(monkeypatch) -> None:
     assert response.json() == {"document_id": str(document_id), "status": "ready"}
 
 
+def test_upload_rejects_oversized_content(monkeypatch) -> None:
+    from knowledgeforge.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "max_upload_bytes", 3)
+    response = TestClient(app).post(
+        "/documents",
+        files={"file": ("large.md", b"too large", "text/markdown")},
+    )
+    assert response.status_code == 413
+
+
 def test_ask_contract_returns_citation(monkeypatch) -> None:
     document_id = UUID("22222222-2222-2222-2222-222222222222")
     chunk = TextChunk("The answer is here.", page=4)

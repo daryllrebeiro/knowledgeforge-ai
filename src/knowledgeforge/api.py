@@ -21,6 +21,8 @@ from knowledgeforge.ingestion.extract_markdown import extract_markdown
 from knowledgeforge.ingestion.store import (
     count_documents,
     create_pending_document,
+    delete_document,
+    delete_tenant,
     find_document_by_hash,
     find_latest_document_by_filename,
     get_document_status,
@@ -183,6 +185,8 @@ def upload_document(
 ) -> DocumentUploadResponse:
     settings = get_settings()
     content = file.file.read()
+    if len(content) > settings.max_upload_bytes:
+        raise HTTPException(status_code=413, detail="Upload exceeds configured size limit")
     document_hash = content_hash(content)
     _, tenant_id = current_user
     limiter.check(tenant_id, "documents", settings.document_rate_limit_per_minute)
@@ -207,9 +211,9 @@ def upload_document(
                 if existing is not None:
                     return DocumentUploadResponse(document_id=existing[0], status="duplicate")
                 previous = find_latest_document_by_filename(connection, filename, tenant_id)
-                storage_uri = CloudStorageClient(settings.gcs_bucket).upload(
-                    f"{tenant_id}/{document_hash}/{filename}", content, file.content_type
-                )
+                storage_uri = CloudStorageClient(
+                    settings.gcs_bucket, settings.gcp_project_id
+                ).upload(f"{tenant_id}/{document_hash}/{filename}", content, file.content_type)
                 document_id = create_pending_document(
                     connection,
                     title=filename,
@@ -279,7 +283,7 @@ def failed_ingestions(
 ) -> list[FailedIngestionResponse]:
     settings = get_settings()
     with psycopg.connect(settings.database_url) as connection:
-        rows = list_failed_ingestions(connection)
+        rows = list_failed_ingestions(connection, current_user[1])
     return [
         FailedIngestionResponse(id=row[0], filename=row[1], error_message=row[2]) for row in rows
     ]
@@ -307,7 +311,7 @@ def upload_documents_batch(
         except HTTPException as exc:
             try:
                 with psycopg.connect(settings.database_url) as connection:
-                    record_failed_ingestion(connection, filename, str(exc.detail))
+                    record_failed_ingestion(connection, filename, str(exc.detail), current_user[1])
             except Exception:
                 pass
             results.append(
@@ -377,3 +381,26 @@ def usage(current_user: tuple[UUID, UUID] = Depends(get_current_user)) -> UsageR
     return UsageResponse(
         tenant_id=current_user[1], documents=documents, queries=queries, cost_estimate=cost
     )
+
+
+@router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_document(
+    document_id: UUID,
+    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+) -> None:
+    settings = get_settings()
+    with psycopg.connect(settings.database_url) as connection:
+        storage_uri = delete_document(connection, document_id, current_user[1])
+    if storage_uri:
+        CloudStorageClient(settings.gcs_bucket, settings.gcp_project_id).delete(storage_uri)
+
+
+@router.delete("/auth/account", status_code=status.HTTP_204_NO_CONTENT)
+def remove_account(current_user: tuple[UUID, UUID] = Depends(get_current_user)) -> None:
+    settings = get_settings()
+    with psycopg.connect(settings.database_url) as connection:
+        storage_uris = delete_tenant(connection, current_user[1])
+    if storage_uris:
+        storage = CloudStorageClient(settings.gcs_bucket, settings.gcp_project_id)
+        for storage_uri in storage_uris:
+            storage.delete(storage_uri)

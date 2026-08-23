@@ -26,3 +26,9 @@ The Gemini smoke test requires a real `GEMINI_API_KEY` in `.env`:
 ```powershell
 uv run python scripts/gemini_smoke_test.py
 ```
+
+## Product and support documents
+
+- [Privacy policy](docs/privacy-policy.md)
+- [Terms of service](docs/terms-of-service.md)
+- [Support path](docs/support.md)

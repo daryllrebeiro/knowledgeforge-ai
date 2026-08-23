@@ -18,3 +18,5 @@ def test_versioned_api_routes_are_documented() -> None:
     assert "/ask" in paths
     assert "/v1/ask" in paths
     assert "/v1/auth/login" in paths
+    assert "/documents/{document_id}" in paths
+    assert "/v1/auth/account" in paths

@@ -165,21 +165,51 @@ def mark_superseded(connection: Connection, old_document_id: UUID, new_document_
         )
 
 
-def record_failed_ingestion(connection: Connection, filename: str, error_message: str) -> None:
+def record_failed_ingestion(
+    connection: Connection, filename: str, error_message: str, tenant_id: UUID
+) -> None:
     with connection.cursor() as cursor:
         cursor.execute(
-            "INSERT INTO failed_ingestions (filename, error_message) VALUES (%s, %s)",
-            (filename, error_message),
+            "INSERT INTO failed_ingestions (filename, error_message, tenant_id) "
+            "VALUES (%s, %s, %s)",
+            (filename, error_message, tenant_id),
         )
 
 
-def list_failed_ingestions(connection: Connection) -> list[tuple[UUID, str, str]]:
+def list_failed_ingestions(connection: Connection, tenant_id: UUID) -> list[tuple[UUID, str, str]]:
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT id, filename, error_message FROM failed_ingestions ORDER BY attempted_at DESC"
+            "SELECT id, filename, error_message FROM failed_ingestions "
+            "WHERE tenant_id = %s ORDER BY attempted_at DESC",
+            (tenant_id,),
         )
         rows = cursor.fetchall()
     return [(UUID(str(row[0])), str(row[1]), str(row[2])) for row in rows]
+
+
+def delete_document(connection: Connection, document_id: UUID, tenant_id: UUID) -> str | None:
+    with connection.transaction():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM documents WHERE id = %s AND tenant_id = %s RETURNING storage_uri",
+                (document_id, tenant_id),
+            )
+            row = cursor.fetchone()
+    return None if row is None else row[0]
+
+
+def delete_tenant(connection: Connection, tenant_id: UUID) -> list[str]:
+    with connection.transaction():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT storage_uri FROM documents "
+                "WHERE tenant_id = %s AND storage_uri IS NOT NULL",
+                (tenant_id,),
+            )
+            storage_uris = [str(row[0]) for row in cursor.fetchall()]
+            cursor.execute("DELETE FROM request_logs WHERE tenant_id = %s", (tenant_id,))
+            cursor.execute("DELETE FROM tenants WHERE id = %s", (tenant_id,))
+    return storage_uris
 
 
 def record_request_log(
