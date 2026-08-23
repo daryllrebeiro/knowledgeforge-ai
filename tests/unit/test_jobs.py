@@ -2,7 +2,7 @@ import json
 from uuid import UUID
 
 from knowledgeforge.ingestion.jobs import IngestionJob
-from knowledgeforge.worker.processor import process_job
+from knowledgeforge.worker.processor import handle_delivery, process_job
 
 
 def test_duplicate_ready_job_is_acknowledged_without_processing() -> None:
@@ -39,3 +39,34 @@ def test_pending_job_is_processed() -> None:
 
     assert process_job(payload, get_status=lambda _: "pending", process=processed.append)
     assert len(processed) == 1
+
+
+def test_malformed_delivery_raises_for_pubsub_retry() -> None:
+    import pytest
+
+    with pytest.raises((KeyError, ValueError, TypeError)):
+        handle_delivery(
+            b'{"document_id":"not-a-job"}',
+            get_status=lambda _: "pending",
+            process=lambda _: None,
+        )
+
+
+def test_worker_failure_propagates_without_ack_result() -> None:
+    payload = json.dumps(
+        {
+            "document_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            "tenant_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            "storage_uri": "gs://bucket/file.pdf",
+            "content_hash": "hash",
+        }
+    ).encode()
+
+    import pytest
+
+    with pytest.raises(RuntimeError, match="worker crash"):
+        handle_delivery(
+            payload,
+            get_status=lambda _: "pending",
+            process=lambda _: (_ for _ in ()).throw(RuntimeError("worker crash")),
+        )

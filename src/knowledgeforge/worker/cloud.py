@@ -1,9 +1,17 @@
+import os
+
+from google.auth.credentials import AnonymousCredentials
 from google.cloud import pubsub_v1, storage  # type: ignore[import-untyped]
 
 
 class CloudStorageClient:
-    def __init__(self, bucket_name: str) -> None:
-        self.client = storage.Client()
+    def __init__(self, bucket_name: str, project_id: str = "") -> None:
+        credentials = (
+            AnonymousCredentials()  # type: ignore[no-untyped-call]
+            if os.getenv("STORAGE_EMULATOR_HOST")
+            else None
+        )
+        self.client = storage.Client(project=project_id or None, credentials=credentials)
         self.bucket = self.client.bucket(bucket_name)
 
     def upload(self, filename: str, content: bytes, content_type: str | None) -> str:
@@ -17,10 +25,21 @@ class CloudStorageClient:
             raise ValueError("storage URI does not belong to configured bucket")
         return bytes(self.bucket.blob(uri[len(prefix) :]).download_as_bytes())
 
+    def delete(self, uri: str) -> None:
+        prefix = f"gs://{self.bucket.name}/"
+        if not uri.startswith(prefix):
+            raise ValueError("storage URI does not belong to configured bucket")
+        self.bucket.blob(uri[len(prefix) :]).delete()
+
 
 class PubSubPublisher:
     def __init__(self, project_id: str, topic_name: str) -> None:
-        self.client = pubsub_v1.PublisherClient()
+        credentials = (
+            AnonymousCredentials()  # type: ignore[no-untyped-call]
+            if os.getenv("PUBSUB_EMULATOR_HOST")
+            else None
+        )
+        self.client = pubsub_v1.PublisherClient(credentials=credentials)
         self.topic_path = self.client.topic_path(project_id, topic_name)
 
     def publish(self, payload: bytes) -> str:

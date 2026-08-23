@@ -4,9 +4,11 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "17 3 * * 1"
 
 jobs:
-  test:
+  unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,8 +27,89 @@ jobs:
         run: uv run ruff format --check .
       - name: Type check
         run: uv run mypy src
-      - name: Tests
-        run: uv run pytest
+      - name: Unit tests
+        run: uv run pytest -m "not integration and not live"
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: knowledgeforge
+          POSTGRES_USER: knowledgeforge
+          POSTGRES_PASSWORD: knowledgeforge
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U knowledgeforge -d knowledgeforge"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://knowledgeforge:knowledgeforge@localhost:5432/knowledgeforge
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: latest
+      - name: Install dependencies
+        run: uv sync --dev
+      - name: Apply migrations
+        run: uv run python scripts/apply_migrations.py
+      - name: Real PostgreSQL integration tests
+        run: uv run pytest -m integration
+
+  live-external:
+    if: github.event_name == 'schedule' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: latest
+      - name: Install dependencies
+        run: uv sync --dev
+      - name: Gemini live smoke test
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: uv run python scripts/gemini_smoke_test.py
+      - name: Live local-corpus retrieval evaluation
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: uv run python evaluation/run_live_eval.py
+      - name: Phase 12 retrieval evaluation
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: uv run python evaluation/run_phase12_eval.py --output phase12-evaluation.json
+      - name: Upload Phase 12 evaluation
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase12-evaluation
+          path: phase12-evaluation.json
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: Terraform setup
         uses: hashicorp/setup-terraform@v3
         with:

@@ -27,8 +27,10 @@ class Settings(BaseSettings):
     document_rate_limit_per_minute: int = 10
     auth_rate_limit_per_minute: int = 10
     max_documents_per_tenant: int = 100
+    max_upload_bytes: int = 10_000_000
     cors_allowed_origins: str = ""
     redis_url: str = ""
+    local_embeddings: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 

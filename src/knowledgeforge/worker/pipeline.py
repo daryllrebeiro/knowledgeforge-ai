@@ -5,7 +5,7 @@ from google import genai
 
 from knowledgeforge.config import Settings
 from knowledgeforge.ingestion.chunk import chunk_pages
-from knowledgeforge.ingestion.embed import embed_texts
+from knowledgeforge.ingestion.embed import embed_texts, embed_texts_local
 from knowledgeforge.ingestion.extract import extract_pdf
 from knowledgeforge.ingestion.extract_docx import extract_docx
 from knowledgeforge.ingestion.extract_markdown import extract_markdown
@@ -15,7 +15,7 @@ from knowledgeforge.worker.cloud import CloudStorageClient
 
 
 def process_ingestion_job(job: IngestionJob, settings: Settings) -> None:
-    storage = CloudStorageClient(settings.gcs_bucket)
+    storage = CloudStorageClient(settings.gcs_bucket, settings.gcp_project_id)
     content = storage.download(job.storage_uri)
     filename = job.storage_uri.rsplit("/", 1)[-1].lower()
     if filename.endswith(".pdf"):
@@ -25,10 +25,13 @@ def process_ingestion_job(job: IngestionJob, settings: Settings) -> None:
     else:
         pages = extract_markdown(BytesIO(content))
     chunks = chunk_pages(pages, chunk_size=settings.chunk_size, overlap=settings.chunk_overlap)
-    client = genai.Client(api_key=settings.gemini_api_key)
-    embeddings = embed_texts(
-        client, [chunk.text for chunk in chunks], model=settings.gemini_embedding_model
-    )
+    if settings.local_embeddings:
+        embeddings = embed_texts_local([chunk.text for chunk in chunks])
+    else:
+        client = genai.Client(api_key=settings.gemini_api_key)
+        embeddings = embed_texts(
+            client, [chunk.text for chunk in chunks], model=settings.gemini_embedding_model
+        )
     with psycopg.connect(settings.database_url) as connection:
         with connection.transaction():
             with connection.cursor() as cursor:

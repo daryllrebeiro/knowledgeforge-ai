@@ -27,3 +27,13 @@ def process_job(
         return False
     process(job)
     return True
+
+
+def handle_delivery(
+    payload: bytes,
+    *,
+    get_status: Callable[[UUID], str],
+    process: Callable[[IngestionJob], None],
+) -> bool:
+    """Process a delivery and let malformed payloads reach Pub/Sub retry/DLQ."""
+    return process_job(payload, get_status=get_status, process=process)

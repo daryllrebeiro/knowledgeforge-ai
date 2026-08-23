@@ -1,0 +1,121 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: knowledgeforge
+      POSTGRES_USER: knowledgeforge
+      POSTGRES_PASSWORD: knowledgeforge
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knowledgeforge -d knowledgeforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  fake-gcs:
+    image: fsouza/fake-gcs-server:latest
+    command: ["-scheme", "http", "-port", "4443", "-external-url", "http://fake-gcs:4443"]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:4443/storage/v1/b"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command: >-
+      gcloud beta emulators pubsub start
+      --project=local-project --host-port=0.0.0.0:8085
+    environment:
+      CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
+
+  local-cloud-init:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    depends_on:
+      fake-gcs:
+        condition: service_healthy
+      pubsub-emulator:
+        condition: service_started
+    environment:
+      CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+    volumes:
+      - ./scripts/init_local_cloud.sh:/init_local_cloud.sh:ro
+    entrypoint: ["bash", "/init_local_cloud.sh"]
+
+  migrations:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://knowledgeforge:knowledgeforge@postgres:5432/knowledgeforge
+    command: ["python", "scripts/apply_migrations.py"]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+      local-cloud-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://knowledgeforge:knowledgeforge@postgres:5432/knowledgeforge
+      REDIS_URL: redis://redis:6379/0
+      GCP_PROJECT_ID: local-project
+      GCS_BUCKET: knowledgeforge
+      PUBSUB_TOPIC: knowledgeforge-ingestion
+      PUBSUB_SUBSCRIPTION: knowledgeforge-ingestion-worker
+      ASYNC_INGESTION: "true"
+      LOCAL_EMBEDDINGS: "true"
+      STORAGE_EMULATOR_HOST: http://fake-gcs:4443
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      GEMINI_API_KEY: local-emulator-not-used
+
+  worker:
+    build:
+      context: .
+      dockerfile: infrastructure/Dockerfile.worker
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+      local-cloud-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://knowledgeforge:knowledgeforge@postgres:5432/knowledgeforge
+      GCP_PROJECT_ID: local-project
+      GCS_BUCKET: knowledgeforge
+      PUBSUB_SUBSCRIPTION: knowledgeforge-ingestion-worker
+      LOCAL_EMBEDDINGS: "true"
+      STORAGE_EMULATOR_HOST: http://fake-gcs:4443
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      GEMINI_API_KEY: local-emulator-not-used
+    command: ["python", "-m", "knowledgeforge.worker.pull_entrypoint"]
+
+  smoke:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      api:
+        condition: service_started
+      worker:
+        condition: service_started
+    environment:
+      API_BASE_URL: http://api:8000
+    command: ["python", "scripts/emulator_smoke_test.py"]
