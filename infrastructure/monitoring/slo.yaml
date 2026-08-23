@@ -1,0 +1,28 @@
+apiVersion: monitoring.googleapis.com/v1
+kind: ServiceLevelObjective
+metadata:
+  name: knowledgeforge-ask-availability
+spec:
+  service: knowledgeforge-api
+  displayName: Ask availability
+  goal: 0.99
+  rollingPeriod: 30d
+  requestBased:
+    goodTotalRatio:
+      totalServiceFilter: 'resource.type="cloud_run_revision" AND metric.type="run.googleapis.com/request_count" AND resource.labels.service_name="knowledgeforge-api" AND metric.labels.response_code_class!="4xx"'
+      goodServiceFilter: 'metric.labels.response_code_class="2xx"'
+---
+apiVersion: monitoring.googleapis.com/v1
+kind: AlertPolicy
+metadata:
+  name: knowledgeforge-dead-letter-nonempty
+spec:
+  displayName: KnowledgeForge dead-letter queue non-empty
+  combiner: OR
+  conditions:
+    - displayName: Dead-letter messages exist
+      conditionThreshold:
+        filter: 'metric.type="pubsub.googleapis.com/subscription/num_undelivered_messages"'
+        comparison: COMPARISON_GT
+        thresholdValue: 0
+        duration: 300s

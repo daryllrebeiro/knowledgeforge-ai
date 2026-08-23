@@ -1,0 +1,67 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "knowledgeforge-ai"
+version = "0.1.0"
+description = "Production-grade RAG platform with grounded, cited answers over your documents."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1.0",
+  "google-genai>=1.0,<2.0",
+  "google-cloud-storage>=2.18,<3.0",
+  "google-cloud-pubsub>=2.27,<3.0",
+  "pypdf>=5.0,<6.0",
+  "python-docx>=1.1,<2.0",
+  "markdown-it-py>=3.0,<4.0",
+  "psycopg[binary]>=3.2,<4.0",
+  "pgvector>=0.3,<1.0",
+  "python-multipart>=0.0.20,<1.0",
+  "python-jose[cryptography]>=3.3,<4.0",
+  "passlib[bcrypt]>=1.7,<2.0",
+  "bcrypt>=4.0,<5.0",
+  "pydantic-settings>=2.6,<3.0",
+  "uvicorn[standard]>=0.34,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28,<1.0",
+  "mypy>=1.14,<2.0",
+  "pre-commit>=4.0,<5.0",
+  "pytest>=8.3,<9.0",
+  "ruff>=0.9,<1.0",
+  "types-passlib>=1.7,<2.0",
+  "types-python-jose>=3.3,<4.0",
+  "tenacity>=9.0,<10.0",
+]
+
+[dependency-groups]
+dev = [
+  "httpx>=0.28,<1.0",
+  "mypy>=1.14,<2.0",
+  "pre-commit>=4.0,<5.0",
+  "pytest>=8.3,<9.0",
+  "ruff>=0.9,<1.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/knowledgeforge"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+exclude = "^tests/"

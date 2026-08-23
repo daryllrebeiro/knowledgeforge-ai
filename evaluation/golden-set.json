@@ -1,0 +1,14 @@
+[
+  {
+    "question": "What is the purpose of this system?",
+    "expected_document_id": "fixture-document",
+    "expected_location": 1,
+    "expected_answer_summary": "A production-grade RAG service over uploaded documents."
+  },
+  {
+    "question": "Which model provider is used?",
+    "expected_document_id": "fixture-document",
+    "expected_location": 1,
+    "expected_answer_summary": "Gemini is used for generation and embeddings."
+  }
+]
