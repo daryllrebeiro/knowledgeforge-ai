@@ -449,3 +449,92 @@ deferred and must not create users, authenticate accounts, or apply infrastructu
 
 Each hardening area must have an evidence entry in `docs/decisions.md` or
 `docs/validation-status.md`, with before/after measurements where applicable.
+
+## Phase 10 — Real local integration testing
+
+GCP remains deferred. This phase uses only local services and scheduled external tests.
+
+### Status
+
+- [x] Unit, integration, and live-external CI tiers are separated.
+- [x] Real PostgreSQL/pgvector tenant isolation is defined for CI.
+- [x] Real Redis multi-process rate limiting is defined for CI.
+- [x] Fresh-database migration application runs in CI.
+- [x] Scheduled/main-branch real-Gemini smoke validation is defined outside PRs.
+
+CI execution evidence is still required to close the phase completely; the current
+workspace has no Docker daemon and no Gemini credential by design.
+
+## Phase 11 — Emulated cloud dependencies
+
+Use fake-gcs-server and the Pub/Sub emulator to prove async ingestion, dead-letter,
+retry, and idempotency behavior without a GCP account.
+
+### Implementation progress
+
+- [x] Full local stack definition with PostgreSQL, Redis, fake GCS, Pub/Sub emulator,
+  API, worker, and migration/init services.
+- [x] Emulator-aware Cloud Storage and Pub/Sub clients using anonymous credentials.
+- [x] Local deterministic embeddings mode for cloud-free worker execution.
+- [x] Pull-based emulator worker entrypoint.
+- [x] Executable full-stack async smoke harness covering register, upload, and ready.
+- [x] Malformed-delivery retry path and dead-letter subscription configuration.
+- [ ] Execute the upload → ready flow against a running Docker stack.
+- [ ] Prove malformed-job dead-letter routing and duplicate-message idempotency.
+
+## Phase 12 — Real evaluation and retrieval-quality resolution
+
+Build a real local corpus and golden set, record Hit@5/correctness, and make an
+evidence-backed hybrid-search/reranking decision.
+
+### Implementation progress
+
+- [x] Repository-owned 20-source corpus and 20-question golden set.
+- [x] Repeatable baseline and large-chunk evaluation runner.
+- [x] Per-miss error classification for hybrid-search versus reranking candidates.
+- [x] Local vector-versus-lexical-hybrid comparison with diagnostic output.
+- [x] Credential-gated scheduled Gemini evaluation workflow.
+- [ ] Execute the Gemini evaluation and record real Hit@5/correctness numbers.
+- [ ] Make the hybrid-search/reranking decision from observed misses.
+
+## Phase 13 — Local performance validation and operational drills
+
+Run Locust, backup/restore, migration recovery, and incident drills against the local
+stack and record measured results.
+
+### Implementation progress
+
+- [x] Locust supports authenticated local load runs through `KNOWLEDGEFORGE_TOKEN`.
+- [x] Local PostgreSQL backup/restore integrity script.
+- [x] Worker failure and malformed-delivery drill coverage.
+- [x] Performance and recovery procedure documented.
+- [ ] Execute load test against the full stack and record bottleneck measurements.
+- [ ] Execute backup/restore against running PostgreSQL containers.
+
+## Phase 14 — Product completeness gate
+
+Complete deletion workflows, trust documents, adversarial testing, security scan
+execution, OpenAPI review, and the first-user onboarding walkthrough.
+
+### Implementation progress
+
+- [x] Hard-delete account and document routes with tenant-scoped storage cleanup.
+- [x] Tenant-scoped failed-ingestion records and deletion migration.
+- [x] Upload-size enforcement and adversarial route coverage started.
+- [x] Privacy policy, terms, and support path drafts.
+- [ ] Execute pip-audit and Trivy in hosted CI and record findings.
+- [ ] Complete human onboarding walkthrough and friction log.
+
+## Phase 15 — Real GCP deployment
+
+Only after Phases 10–14 are complete may GCP provisioning, IAM, deployment, quotas,
+managed-service validation, and production promotion begin.
+
+### Preparation status
+
+- [x] Deployment workflow and Terraform configuration exist.
+- [x] GCP preflight script exists.
+- [x] Deployment order and required inputs documented in `docs/phase15-deployment-gate.md`.
+- [ ] Supply an authenticated project and run preflight.
+- [ ] Apply Terraform and deploy staging.
+- [ ] Complete real staging and production validation.
