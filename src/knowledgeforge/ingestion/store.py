@@ -208,6 +208,7 @@ def delete_tenant(connection: Connection, tenant_id: UUID) -> list[str]:
             )
             storage_uris = [str(row[0]) for row in cursor.fetchall()]
             cursor.execute("DELETE FROM request_logs WHERE tenant_id = %s", (tenant_id,))
+            cursor.execute("DELETE FROM documents WHERE tenant_id = %s", (tenant_id,))
             cursor.execute("DELETE FROM tenants WHERE id = %s", (tenant_id,))
     return storage_uris
 

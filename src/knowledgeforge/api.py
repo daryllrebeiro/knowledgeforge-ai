@@ -391,6 +391,8 @@ def remove_document(
     settings = get_settings()
     with psycopg.connect(settings.database_url) as connection:
         storage_uri = delete_document(connection, document_id, current_user[1])
+    if storage_uri is None:
+        raise HTTPException(status_code=404, detail="Document not found")
     if storage_uri:
         CloudStorageClient(settings.gcs_bucket, settings.gcp_project_id).delete(storage_uri)
 

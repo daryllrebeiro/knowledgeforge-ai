@@ -170,6 +170,7 @@ After those prerequisites exist, the remaining execution sequence is:
 ## Authoritative references
 
 - [Build plan](../Plan.md)
+- [Local completion roadmap](local-completion-roadmap.md)
 - [Validation status](validation-status.md)
 - [Phase 15 deployment gate](phase15-deployment-gate.md)
 - [Security hardening](security-hardening.md)

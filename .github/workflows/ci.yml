@@ -74,6 +74,21 @@ jobs:
       - name: Real PostgreSQL integration tests
         run: uv run pytest -m integration
 
+  emulator-stack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start local emulator stack
+        run: docker compose -f docker-compose.full.yml up -d --build --scale smoke=0
+      - name: Run async ingestion smoke test
+        run: docker compose -f docker-compose.full.yml run --rm smoke
+      - name: Collect emulator logs
+        if: always()
+        run: docker compose -f docker-compose.full.yml logs --no-color
+      - name: Stop local emulator stack
+        if: always()
+        run: docker compose -f docker-compose.full.yml down --volumes --remove-orphans
+
   live-external:
     if: github.event_name == 'schedule' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest

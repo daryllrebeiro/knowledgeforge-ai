@@ -133,8 +133,8 @@ Execution remains pending because Docker is not installed in the current workspa
 - Added worker-crash and malformed-delivery drill tests and documented retry behavior.
 - Added `docs/phase13-operations.md` with repeatable performance and recovery commands.
 
-Execution remains pending because Docker and PostgreSQL client tools are unavailable in
-the current workspace.
+Execution remains pending for the hosted-load and database-client portions; the local
+Docker stack is now validated account-free.
 
 ## Phase 14 implementation evidence
 
@@ -153,6 +153,63 @@ the current workspace.
 - Confirmed deployment workflow, Terraform configuration, and staging preflight are
   present for the eventual authenticated run.
 - No GCP project, billing account, user, credential, secret, or deployment was created.
+
+## Account-free completion roadmap
+
+`docs/local-completion-roadmap.md` now defines the execution order and evidence gates
+for full-stack emulators, database recovery, performance, evaluation, security, trust,
+and onboarding work that can proceed without GCP.
+
+## Roadmap start evidence — 2026-08-24
+
+Completed in the current workspace:
+
+- Ruff lint: passed.
+- Ruff formatting: passed.
+- mypy: passed.
+- pytest: passed with the expected environment-dependent integration skip.
+- Terraform formatting and validation: passed.
+- Docker Compose and GitHub Actions YAML parsing: passed.
+- Python bytecode compilation for source, scripts, and evaluation code: passed.
+- Local deterministic Phase 12 evaluation: passed.
+
+Environment gaps identified:
+
+- Docker Desktop is installed and the local engine is available; Podman and nerdctl are
+  not installed.
+- `pg_dump` and `pg_restore` are not installed.
+- Locust and Trivy are not installed.
+- `uv` is not installed; the bundled workspace Python was used for checks.
+
+The full emulator CI job, `scripts/run_full_local_stack.ps1`, and
+`scripts/run_security_checks.ps1` are ready for repeat execution. PostgreSQL client
+tools, Locust, and Trivy remain optional local gaps.
+
+Workstream B implementation started:
+
+- The emulator smoke harness now checks duplicate-upload idempotency.
+- The emulator smoke harness now deletes the ready document and verifies a subsequent
+  status lookup returns 404.
+- The API now returns 404 when a caller attempts to delete a document outside its tenant
+  or a document that does not exist.
+- Static checks and the full local test suite remain passing after these changes.
+
+Workstream A/B local Docker execution — 2026-08-24:
+
+- Docker Desktop engine: client/server 29.7.2, healthy.
+- Full Compose stack built successfully with PostgreSQL/pgvector, Redis, fake GCS,
+  Pub/Sub emulator, migrations, API, worker, and smoke services.
+- Local cloud initialization now uses the emulator REST API and exits successfully;
+  it does not require gcloud credentials or a GCP project.
+- Migration runner now tracks applied files and baselines an existing local schema,
+  making stack restarts idempotent without deleting the database volume.
+- End-to-end smoke passed: registration, asynchronous upload, duplicate-upload
+  idempotency, worker processing to ready, document deletion, and post-delete 404.
+- Extended lifecycle smoke passed: malformed Pub/Sub delivery reached the local
+  dead-letter subscription after retry exhaustion; account deletion removed tenant data,
+  invalidated tenant-scoped access, and deleted the exact raw fake-GCS object.
+- A real referential-integrity defect found by the drill was fixed by deleting tenant
+  documents explicitly before deleting the tenant row.
 
 Account-free Phase 15 gate check on 2026-08-23:
 

@@ -538,3 +538,10 @@ managed-service validation, and production promotion begin.
 - [ ] Supply an authenticated project and run preflight.
 - [ ] Apply Terraform and deploy staging.
 - [ ] Complete real staging and production validation.
+
+## Post-Phase 15 account-free completion roadmap
+
+Before attaching a GCP project, execute the local emulator, recovery, performance,
+security, onboarding, and optional Gemini-evaluation evidence gates in
+`docs/local-completion-roadmap.md`. This keeps Phase 15 focused on genuine managed-
+service behavior rather than first-time application validation.

@@ -86,6 +86,12 @@ services:
       STORAGE_EMULATOR_HOST: http://fake-gcs:4443
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       GEMINI_API_KEY: local-emulator-not-used
+    healthcheck:
+      test:
+        ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   worker:
     build:
@@ -113,9 +119,11 @@ services:
       dockerfile: Dockerfile
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
       worker:
         condition: service_started
     environment:
       API_BASE_URL: http://api:8000
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      GCS_BASE_URL: http://fake-gcs:4443
     command: ["python", "scripts/emulator_smoke_test.py"]
