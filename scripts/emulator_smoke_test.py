@@ -1,4 +1,4 @@
-"""Exercise register -> upload -> async worker -> ready against the full local stack."""
+"""Exercise register -> upload -> async worker -> ready -> ask against the local stack."""
 
 import base64
 import json
@@ -11,6 +11,7 @@ import uuid
 BASE_URL = os.getenv("API_BASE_URL", "http://api:8000")
 PUBSUB_BASE_URL = f"http://{os.getenv('PUBSUB_EMULATOR_HOST', 'pubsub-emulator:8085')}"
 GCS_BASE_URL = os.getenv("GCS_BASE_URL", "http://fake-gcs:4443")
+DLQ_SUBSCRIPTION = "knowledgeforge-ingestion-dead-letter-worker"
 
 
 def upload_markdown(token: str, filename: str, content: bytes) -> dict:
@@ -59,17 +60,14 @@ def assert_dead_letter_delivery() -> None:
         {"messages": [{"data": base64.b64encode(b"not-json").decode("ascii")}]}
     ).encode()
     emulator_json(f"/v1/{topic}:publish", "POST", body)
-    subscription = (
-        "/v1/projects/local-project/subscriptions/"
-        "knowledgeforge-ingestion-dead-letter-worker:pull"
-    )
+    subscription = f"/v1/projects/local-project/subscriptions/{DLQ_SUBSCRIPTION}:pull"
     for _ in range(45):
         pulled = emulator_json(subscription, "POST", b'{"maxMessages":10}')
         messages = pulled.get("receivedMessages", [])
         if messages:
             ack_ids = [message["ackId"] for message in messages]
             emulator_json(
-                "/v1/projects/local-project/subscriptions/knowledgeforge-ingestion-dead-letter-worker:acknowledge",
+                f"/v1/projects/local-project/subscriptions/{DLQ_SUBSCRIPTION}:acknowledge",
                 "POST",
                 json.dumps({"ackIds": ack_ids}).encode(),
             )
@@ -107,6 +105,102 @@ def request_status(
         return error.code, error.read()
 
 
+def ask_and_stream(token: str) -> None:
+    """Full /ask round trip with LOCAL_GENERATION: retrieval, citations, SSE."""
+    question = json.dumps(
+        {"question": "What should the worker make this local async document?"}
+    ).encode()
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    answer = request("/ask", "POST", question, headers)
+    if not answer["answer"] or not answer["citations"]:
+        raise SystemExit(f"ask returned no cited answer: {answer}")
+
+    stream = urllib.request.Request(f"{BASE_URL}/ask/stream", data=question, headers=headers)
+    with urllib.request.urlopen(stream, timeout=30) as response:
+        events = response.read().decode()
+    if "event: token" not in events or "event: done" not in events:
+        raise SystemExit("streaming ask did not produce token and done events")
+
+
+def extraction_lifecycle(token: str) -> str:
+    """Phase 2.5 loop via the local stub: invoice -> extraction -> structured ask -> cascade."""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    filename = f"invoice-{uuid.uuid4().hex}.md"
+    content = (
+        b"# ACME invoice\n\nInvoice number: INV-1001\n\n"
+        b"Amount due: 250.00 USD\n\nPayment terms: net 30\n"
+    )
+    document_id = upload_markdown(token, filename, content)["document_id"]
+    for _ in range(30):
+        status = request(f"/documents/{document_id}", headers=headers)["status"]
+        if status == "ready":
+            break
+        if status == "failed":
+            raise SystemExit("extraction fixture document failed ingestion")
+        time.sleep(1)
+    else:
+        raise SystemExit("extraction fixture did not become ready")
+
+    # Outbox dispatcher -> extraction worker -> document_extractions row.
+    for _ in range(45):
+        code, body = request_status(
+            f"/documents/{document_id}/extraction", headers=headers
+        )
+        if code == 200:
+            extraction = json.loads(body)
+            break
+        time.sleep(1)
+    else:
+        raise SystemExit("extraction did not appear for the invoice fixture")
+    if extraction["schema_type"] != "invoice" or not extraction["fields"].get("vendor_name"):
+        raise SystemExit(f"unexpected extraction payload: {extraction}")
+
+    # Reprocess: 202 + observable job lifecycle, worker replaces the row.
+    reprocess = request(
+        f"/documents/{document_id}/extraction/reprocess",
+        "POST",
+        b"{}",
+        headers,
+    )
+    job_id = reprocess["job_id"]
+    for _ in range(45):
+        job = request(f"/extraction-jobs/{job_id}", headers=headers)
+        if job["status"] in {"succeeded", "failed", "skipped"}:
+            break
+        time.sleep(1)
+    else:
+        raise SystemExit("reprocess job did not finish")
+    if job["status"] != "succeeded":
+        raise SystemExit(f"reprocess job ended {job['status']}: {job['detail']}")
+    # An active-job conflict while none is running is a contract break; a
+    # second reprocess right after completion must be accepted again.
+    conflict, _ = request_status(
+        f"/documents/{document_id}/extraction/reprocess", "POST", b"{}", headers
+    )
+    if conflict not in {202, 409}:
+        raise SystemExit(f"second reprocess returned HTTP {conflict}")
+
+    # Structured-filter ask: extraction rows scope retrieval and join the
+    # prompt; citations must include the extracted-fields block.
+    question = json.dumps(
+        {
+            "question": "What did we pay Acme?",
+            "structured_filters": {
+                "schema_type": "invoice",
+                "vendor_name": "Acme Corporation",
+            },
+        }
+    ).encode()
+    answer = request("/ask", "POST", question, headers)
+    if not answer["answer"] or not answer["citations"]:
+        raise SystemExit(f"structured ask returned no cited answer: {answer}")
+    if not any(citation.get("page") is None for citation in answer["citations"]):
+        raise SystemExit(
+            f"structured ask did not cite extracted fields: {answer['citations']}"
+        )
+    return document_id
+
+
 def main() -> None:
     for _ in range(30):
         try:
@@ -137,25 +231,47 @@ def main() -> None:
             "status"
         ]
         if status == "ready":
-            deleted, _ = request_status(
-                f"/documents/{document_id}",
-                "DELETE",
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            if deleted != 204:
-                raise SystemExit(f"document deletion returned HTTP {deleted}")
-            missing, _ = request_status(
-                f"/documents/{document_id}",
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            if missing != 404:
-                raise SystemExit(f"deleted document returned HTTP {missing}")
             break
         if status == "failed":
             raise SystemExit("async smoke test failed: worker marked document failed")
         time.sleep(1)
     else:
         raise SystemExit("async smoke test timed out waiting for ready")
+
+    # R6 end-to-end evidence: ask (plain + streaming) returns a cited answer
+    # against the local stack, exercising retrieval and citation parsing.
+    ask_and_stream(token)
+
+    # Phase 2.5 end-to-end: the full extraction loop via the local stub.
+    invoice_document_id = extraction_lifecycle(token)
+
+    deleted, _ = request_status(
+        f"/documents/{invoice_document_id}",
+        "DELETE",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if deleted != 204:
+        raise SystemExit(f"invoice deletion returned HTTP {deleted}")
+    gone, _ = request_status(
+        f"/documents/{invoice_document_id}/extraction",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if gone != 404:
+        raise SystemExit(f"extraction row did not cascade with document deletion: HTTP {gone}")
+
+    deleted, _ = request_status(
+        f"/documents/{document_id}",
+        "DELETE",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if deleted != 204:
+        raise SystemExit(f"document deletion returned HTTP {deleted}")
+    missing, _ = request_status(
+        f"/documents/{document_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if missing != 404:
+        raise SystemExit(f"deleted document returned HTTP {missing}")
 
     assert_dead_letter_delivery()
     account_filename = f"account-delete-{uuid.uuid4().hex}.md"

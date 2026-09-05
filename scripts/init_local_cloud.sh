@@ -19,3 +19,14 @@ curl -fsS -X PUT "${pubsub_base}/v1/${project_path}/subscriptions/knowledgeforge
 curl -fsS -X PUT "${pubsub_base}/v1/${project_path}/subscriptions/knowledgeforge-ingestion-dead-letter-worker" \
   -H 'Content-Type: application/json' \
   -d '{"topic":"projects/local-project/topics/knowledgeforge-ingestion-dead-letter"}' || true
+
+# Phase 2.5: extraction topic, worker subscription, and dead-letter policy.
+# Separate topic so extraction backpressure can never block ingestion.
+curl -fsS -X PUT "${pubsub_base}/v1/${project_path}/topics/knowledgeforge-extraction" || true
+curl -fsS -X PUT "${pubsub_base}/v1/${project_path}/topics/knowledgeforge-extraction-dead-letter" || true
+curl -fsS -X PUT "${pubsub_base}/v1/${project_path}/subscriptions/knowledgeforge-extraction-worker" \
+  -H 'Content-Type: application/json' \
+  -d '{"topic":"projects/local-project/topics/knowledgeforge-extraction","deadLetterPolicy":{"deadLetterTopic":"projects/local-project/topics/knowledgeforge-extraction-dead-letter","maxDeliveryAttempts":5}}' || true
+curl -fsS -X PUT "${pubsub_base}/v1/${project_path}/subscriptions/knowledgeforge-extraction-dead-letter-worker" \
+  -H 'Content-Type: application/json' \
+  -d '{"topic":"projects/local-project/topics/knowledgeforge-extraction-dead-letter"}' || true

@@ -19,6 +19,11 @@ services:
       timeout: 3s
       retries: 20
 
+  # R5.8: mutable `:latest` is a supply-chain risk. Pin to an immutable
+  # digest once one is resolved (needs network access):
+  #   docker buildx imagetools inspect fsouza/fake-gcs-server:latest
+  #   -> replace the tag below with fsouza/fake-gcs-server@sha256:<digest>
+  # Tracked in the verification checklist (docs/validation-status.md).
   fake-gcs:
     image: fsouza/fake-gcs-server:latest
     command: ["-scheme", "http", "-port", "4443", "-external-url", "http://fake-gcs:4443"]
@@ -83,6 +88,8 @@ services:
       PUBSUB_SUBSCRIPTION: knowledgeforge-ingestion-worker
       ASYNC_INGESTION: "true"
       LOCAL_EMBEDDINGS: "true"
+      LOCAL_GENERATION: "true"
+      LOCAL_EXTRACTION: "true"
       STORAGE_EMULATOR_HOST: http://fake-gcs:4443
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       GEMINI_API_KEY: local-emulator-not-used
@@ -108,10 +115,58 @@ services:
       GCS_BUCKET: knowledgeforge
       PUBSUB_SUBSCRIPTION: knowledgeforge-ingestion-worker
       LOCAL_EMBEDDINGS: "true"
+      LOCAL_EXTRACTION: "true"
+      EXTRACTION_TOPIC: knowledgeforge-extraction
       STORAGE_EMULATOR_HOST: http://fake-gcs:4443
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       GEMINI_API_KEY: local-emulator-not-used
     command: ["python", "-m", "knowledgeforge.worker.pull_entrypoint"]
+    # Pull workers serve no HTTP; the image HEALTHCHECK targets the push
+    # entrypoint's port and would report a false "unhealthy".
+    healthcheck:
+      disable: true
+
+  # Phase 2.5: extraction worker (separate blast radius from ingestion) and
+  # the outbox dispatcher that publishes document.ready events.
+  extraction-worker:
+    build:
+      context: .
+      dockerfile: infrastructure/Dockerfile.worker
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+      local-cloud-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://knowledgeforge:knowledgeforge@postgres:5432/knowledgeforge
+      GCP_PROJECT_ID: local-project
+      GCS_BUCKET: knowledgeforge
+      EXTRACTION_SUBSCRIPTION: knowledgeforge-extraction-worker
+      LOCAL_EXTRACTION: "true"
+      STORAGE_EMULATOR_HOST: http://fake-gcs:4443
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      GEMINI_API_KEY: local-emulator-not-used
+    command: ["python", "-m", "knowledgeforge.worker.extraction_pull_entrypoint"]
+    healthcheck:
+      disable: true
+
+  outbox-dispatcher:
+    build:
+      context: .
+      dockerfile: infrastructure/Dockerfile.worker
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://knowledgeforge:knowledgeforge@postgres:5432/knowledgeforge
+      GCP_PROJECT_ID: local-project
+      EXTRACTION_TOPIC: knowledgeforge-extraction
+      LOCAL_EXTRACTION: "true"
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+    command:
+      ["python", "-m", "knowledgeforge.extraction.outbox_dispatcher", "--loop"]
+    healthcheck:
+      disable: true
 
   smoke:
     build:
