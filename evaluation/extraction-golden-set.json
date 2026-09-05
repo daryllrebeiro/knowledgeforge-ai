@@ -1,0 +1,60 @@
+{
+  "schema_type": "invoice",
+  "documents": [
+    {
+      "document": "invoice-01-clean",
+      "expected": {
+        "vendor_name": "Acme Corporation",
+        "invoice_number": "INV-1001",
+        "invoice_date": "2026-01-15",
+        "due_date": "2026-02-14",
+        "total": 250.00,
+        "currency": "USD"
+      }
+    },
+    {
+      "document": "invoice-02-multi-line",
+      "expected": {
+        "vendor_name": "Globex Ltd",
+        "invoice_number": "GLB-882",
+        "invoice_date": "2026-02-01",
+        "total": 1180.50,
+        "currency": "USD",
+        "line_items": [
+          {"description": "Consulting services", "amount": 1000.00},
+          {"description": "Expenses", "amount": 180.50}
+        ]
+      }
+    },
+    {
+      "document": "invoice-03-no-dates",
+      "expected": {
+        "vendor_name": "Initech",
+        "invoice_number": null,
+        "total": 99.99,
+        "currency": "USD"
+      }
+    },
+    {
+      "document": "invoice-04-messy-scan",
+      "expected": {
+        "vendor_name": "Umbrella Corp",
+        "invoice_number": "UMB-0042",
+        "invoice_date": "03/15/2026",
+        "total": "1,250.00",
+        "currency": "USD"
+      }
+    },
+    {
+      "document": "invoice-05-eur",
+      "expected": {
+        "vendor_name": "Stark Industries GmbH",
+        "invoice_number": "STK-2026-77",
+        "invoice_date": "2026-03-02",
+        "due_date": "2026-03-31",
+        "total": 4800.00,
+        "currency": "EUR"
+      }
+    }
+  ]
+}
