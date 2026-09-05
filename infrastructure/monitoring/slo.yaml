@@ -1,3 +1,19 @@
+# SUPERSEDED — monitoring is defined as code in infrastructure/terraform/main.tf
+# (google_monitoring_slo.ask_availability, google_monitoring_alert_policy.*).
+#
+# This file is retained only as a reference for gcloud-based SLO management in
+# environments not managed by Terraform. Do not apply it alongside Terraform:
+# the two would fight over the same policies, and this manifest's filters are
+# less specific (no environment-suffixed service name, no dead-letter
+# subscription_id filter in the alert).
+#
+# To manage SLOs manually with gcloud instead, first delete the corresponding
+# resources from main.tf, then correct before applying:
+#   spec.service: knowledgeforge-api-<environment>
+#   AlertPolicy conditionThreshold.filter: add
+#     resource.type="pubsub_subscription" AND
+#     resource.labels.subscription_id="knowledgeforge-ingestion-dead-letter-sub-<environment>"
+---
 apiVersion: monitoring.googleapis.com/v1
 kind: ServiceLevelObjective
 metadata:

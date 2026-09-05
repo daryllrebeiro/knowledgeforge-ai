@@ -1,0 +1,40 @@
+# Chaos drill override for the full local emulator stack (F6.3).
+#
+# Usage:
+#   docker compose -f docker-compose.full.yml -f docker-compose.chaos.yml \
+#       up -d --build --scale smoke=0
+#   docker compose -f docker-compose.full.yml -f docker-compose.chaos.yml run --rm chaos
+#
+# What this file changes relative to docker-compose.full.yml:
+#   - The API's REDIS_URL points at redis-blackhole, a container with no
+#     listener on 6379 (connection refused = Redis loss). Rate limiting must
+#     degrade to the per-process fallback, never fail the request.
+#   - Adds a one-shot `chaos` service running scripts/emulator_chaos_test.py.
+#
+# Select drills with CHAOS_DRILLS (comma-separated: redis-loss,redelivery-storm;
+# default: both). To run the redelivery storm against a healthy Redis instead,
+# keep docker-compose.full.yml's api environment and run the script by hand.
+services:
+  redis-blackhole:
+    # No process listens on 6379; connections are refused immediately.
+    image: busybox:1.37
+    command: ["sleep", "infinity"]
+
+  api:
+    environment:
+      REDIS_URL: redis://redis-blackhole:6379/0
+
+  chaos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      api:
+        condition: service_healthy
+      worker:
+        condition: service_started
+    environment:
+      API_BASE_URL: http://api:8000
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      CHAOS_DRILLS: "${CHAOS_DRILLS:-redis-loss,redelivery-storm}"
+    command: ["python", "scripts/emulator_chaos_test.py"]

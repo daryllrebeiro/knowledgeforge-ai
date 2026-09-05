@@ -1,22 +1,220 @@
 [
-  {"question": "What is the purpose of the KnowledgeForge system?", "source": "README.md"},
-  {"question": "Why was Python and FastAPI selected?", "source": "docs/decisions.md"},
-  {"question": "What does the launch checklist require before production?", "source": "docs/launch-checklist.md"},
-  {"question": "How does account-agnostic security hardening work?", "source": "docs/security-hardening.md"},
-  {"question": "How are database migrations handled?", "source": "docs/migrations.md"},
-  {"question": "What is currently deferred in validation?", "source": "docs/validation-status.md"},
-  {"question": "What are the phases after the original implementation?", "source": "Plan.md"},
-  {"question": "What configuration controls application limits?", "source": "src/knowledgeforge/config.py"},
-  {"question": "How does the token bucket limiter reject requests?", "source": "src/knowledgeforge/limits.py"},
-  {"question": "Which fields are included in structured request logs?", "source": "src/knowledgeforge/observability.py"},
-  {"question": "What reliability behavior is provided for external calls?", "source": "src/knowledgeforge/reliability.py"},
-  {"question": "How are nearest chunks retrieved for a tenant?", "source": "src/knowledgeforge/retrieval/retrieve.py"},
-  {"question": "How is the grounding prompt constructed?", "source": "src/knowledgeforge/generation/prompt.py"},
-  {"question": "How are generated citations parsed?", "source": "src/knowledgeforge/generation/generate.py"},
-  {"question": "How are local deterministic embeddings generated?", "source": "src/knowledgeforge/ingestion/embed.py"},
-  {"question": "How does text chunking preserve page information?", "source": "src/knowledgeforge/ingestion/chunk.py"},
-  {"question": "How are ingestion jobs represented?", "source": "src/knowledgeforge/ingestion/jobs.py"},
-  {"question": "How does the worker process a cloud ingestion job?", "source": "src/knowledgeforge/worker/pipeline.py"},
-  {"question": "How are emulator cloud clients configured?", "source": "src/knowledgeforge/worker/cloud.py"},
-  {"question": "How is tenant identity validated in authentication?", "source": "src/knowledgeforge/security/auth.py"}
+  {
+    "question": "What is the purpose of the KnowledgeForge system?",
+    "source": "README.md",
+    "expected_answer_keywords": ["grounded", "cited"]
+  },
+  {
+    "question": "Why was Python and FastAPI selected?",
+    "source": "docs/decisions.md",
+    "expected_answer_keywords": ["python", "fastapi", "ecosystem"]
+  },
+  {
+    "question": "What does the launch checklist require before production?",
+    "source": "docs/launch-checklist.md",
+    "expected_answer_keywords": ["terraform", "migrations"]
+  },
+  {
+    "question": "How does account-agnostic security hardening work?",
+    "source": "docs/security-hardening.md",
+    "expected_answer_keywords": ["rate-limited", "jwt"]
+  },
+  {
+    "question": "How are database migrations handled?",
+    "source": "docs/migrations.md",
+    "expected_answer_keywords": ["forward-only", "backup"]
+  },
+  {
+    "question": "What is currently deferred in validation?",
+    "source": "docs/validation-status.md",
+    "expected_answer_keywords": ["gemini"]
+  },
+  {
+    "question": "What are the phases after the original implementation?"
+  },
+  {
+    "question": "Which settings control upload size and rate limits?",
+    "source": "src/knowledgeforge/config.py",
+    "expected_answer_keywords": ["max_upload_bytes"]
+  },
+  {
+    "question": "How does the token bucket limiter reject requests?",
+    "source": "src/knowledgeforge/limits.py",
+    "expected_answer_keywords": ["429"]
+  },
+  {
+    "question": "Which fields are included in structured request logs?",
+    "source": "src/knowledgeforge/observability.py",
+    "expected_answer_keywords": ["request_id", "latency"]
+  },
+  {
+    "question": "What reliability behavior is provided for external calls?",
+    "source": "src/knowledgeforge/reliability.py",
+    "expected_answer_keywords": ["retry", "circuit"]
+  },
+  {
+    "question": "How are nearest chunks retrieved for a tenant?",
+    "source": "src/knowledgeforge/retrieval/retrieve.py",
+    "expected_answer_keywords": ["cosine"]
+  },
+  {
+    "question": "How is the grounding prompt constructed?",
+    "source": "src/knowledgeforge/generation/prompt.py",
+    "expected_answer_keywords": ["doc", "page"]
+  },
+  {
+    "question": "How are generated citations parsed?",
+    "source": "src/knowledgeforge/generation/generate.py",
+    "expected_answer_keywords": ["doc", "page"]
+  },
+  {
+    "question": "How are local deterministic embeddings generated?",
+    "source": "src/knowledgeforge/ingestion/embed.py",
+    "expected_answer_keywords": ["sha256"]
+  },
+  {
+    "question": "How does text chunking preserve page information?",
+    "source": "src/knowledgeforge/ingestion/chunk.py",
+    "expected_answer_keywords": ["page"]
+  },
+  {
+    "question": "How are ingestion jobs represented?",
+    "source": "src/knowledgeforge/ingestion/jobs.py",
+    "expected_answer_keywords": ["document_id", "tenant_id", "storage_uri"]
+  },
+  {
+    "question": "How does the worker process a cloud ingestion job?",
+    "source": "src/knowledgeforge/worker/pipeline.py",
+    "expected_answer_keywords": ["download", "chunks"]
+  },
+  {
+    "question": "How are emulator cloud clients configured?",
+    "source": "src/knowledgeforge/worker/cloud.py",
+    "expected_answer_keywords": ["anonymous"]
+  },
+  {
+    "question": "How is tenant identity validated in authentication?",
+    "source": "src/knowledgeforge/security/auth.py",
+    "expected_answer_keywords": ["jwt", "tenant_id"]
+  },
+  {
+    "question": "What must the model say when the context does not contain enough information?",
+    "source": "src/knowledgeforge/generation/prompt.py",
+    "expected_answer_keywords": ["i don't have enough information"]
+  },
+  {
+    "question": "How does the prompt defend against instructions hidden inside documents?",
+    "source": "src/knowledgeforge/generation/prompt.py",
+    "expected_answer_keywords": ["quoted data"]
+  },
+  {
+    "question": "What happens to requests while the Gemini circuit breaker is open?",
+    "source": "src/knowledgeforge/api.py",
+    "expected_answer_keywords": ["503"]
+  },
+  {
+    "question": "Which HTTP status is returned when a tenant exceeds its document quota?",
+    "source": "src/knowledgeforge/api.py",
+    "expected_answer_keywords": ["402"]
+  },
+  {
+    "question": "Which HTTP status is returned when deleting a document that does not exist?",
+    "source": "src/knowledgeforge/api.py",
+    "expected_answer_keywords": ["404"]
+  },
+  {
+    "question": "Which file types can be uploaded to the system?",
+    "source": "src/knowledgeforge/api.py",
+    "expected_answer_keywords": ["pdf", "docx", "markdown"]
+  },
+  {
+    "question": "How long is the worker's claim lease on a processing document?",
+    "source": "src/knowledgeforge/ingestion/store.py",
+    "expected_answer_keywords": ["10"]
+  },
+  {
+    "question": "Which migration adds the status_changed_at column to documents?",
+    "source": "docs/migrations.md",
+    "expected_answer_keywords": ["008"]
+  },
+  {
+    "question": "Which memory store backs the shared token bucket rate limiter?",
+    "source": "src/knowledgeforge/limits.py",
+    "expected_answer_keywords": ["redis"]
+  },
+  {
+    "question": "What does the rate limiter do when Redis is unreachable?",
+    "source": "src/knowledgeforge/limits.py",
+    "expected_answer_keywords": ["fallback"]
+  },
+  {
+    "question": "What does startup validation refuse to run without outside development?",
+    "source": "src/knowledgeforge/config.py",
+    "expected_answer_keywords": ["jwt", "gemini"]
+  },
+  {
+    "question": "What is the default timeout for Gemini calls in seconds?",
+    "source": "src/knowledgeforge/config.py",
+    "expected_answer_keywords": ["30"]
+  },
+  {
+    "question": "What does the worker do with a duplicate Pub/Sub delivery of the same job?",
+    "source": "src/knowledgeforge/worker/processor.py",
+    "expected_answer_keywords": ["claim", "duplicate"]
+  },
+  {
+    "question": "Which fields does an access token carry?",
+    "source": "src/knowledgeforge/security/auth.py",
+    "expected_answer_keywords": ["sub", "tenant_id"]
+  },
+  {
+    "question": "Which algorithm hashes user passwords?",
+    "source": "src/knowledgeforge/security/auth.py",
+    "expected_answer_keywords": ["bcrypt"]
+  },
+  {
+    "question": "What marks a new section when section-aware chunking is enabled?",
+    "source": "src/knowledgeforge/ingestion/chunk.py",
+    "expected_answer_keywords": ["#"]
+  },
+  {
+    "question": "Which pytest markers separate integration and live tests?",
+    "source": "pyproject.toml",
+    "expected_answer_keywords": ["integration", "live"]
+  },
+  {
+    "question": "What does the roadmap identify as the first post-launch feature?",
+    "source": "docs/roadmap.md",
+    "expected_answer_keywords": ["conversation"]
+  },
+  {
+    "question": "How does the architecture review classify its findings?",
+    "source": "docs/architecture-review.md",
+    "expected_answer_keywords": ["critical", "high"]
+  },
+  {
+    "question": "Which free PostgreSQL providers does the README suggest for deployment?",
+    "source": "README.md",
+    "expected_answer_keywords": ["neon", "supabase"]
+  },
+  {
+    "question": "What is the capital of France?",
+    "source": null,
+    "expected_refusal": true
+  },
+  {
+    "question": "Who wrote the plays Hamlet and Macbeth?",
+    "source": null,
+    "expected_refusal": true
+  },
+  {
+    "question": "What is the boiling point of water in Fahrenheit?",
+    "source": null,
+    "expected_refusal": true
+  },
+  {
+    "question": "How do I apply for a passport in Spain?",
+    "source": null,
+    "expected_refusal": true
+  }
 ]

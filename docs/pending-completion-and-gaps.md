@@ -1,6 +1,6 @@
 # KnowledgeForge AI — Pending Completion and Gaps
 
-Updated: 2026-08-23
+Updated: 2026-09-03
 
 ## Executive status
 
@@ -19,18 +19,29 @@ user account, secret, or deployment has been attached.
 - FastAPI API with OpenAPI documentation.
 - Legacy routes and `/v1` versioned routes.
 - JWT authentication and bcrypt password hashing.
-- Tenant-scoped document storage and retrieval.
-- PDF, DOCX, Markdown, and text extraction.
+- Tenant-scoped document storage and retrieval (tenant scoping is mandatory in
+  `retrieve_chunks`; the unfiltered branch was removed in R4.4).
+- PDF, DOCX, Markdown, HTML, and plain-text extraction.
 - Deterministic chunking with page metadata.
-- Gemini embedding and answer-generation adapters.
+- Gemini embedding and answer-generation adapters; streaming generation (SSE).
+- Follow-up question rewriting for conversations, best-effort with fallback.
 - Grounded prompts with citation extraction and refusal behavior.
-- Synchronous and asynchronous ingestion paths.
+- Synchronous and asynchronous ingestion paths, re-ingestion of ready/failed
+  documents, and an embedding cache keyed by model+content hash.
 - Cloud Storage and Pub/Sub adapters.
-- Local deterministic embeddings for emulator-only operation.
+- Local deterministic embeddings and answers for emulator-only operation.
+- Conversations with persisted citations, refresh-token rotation with replay
+  detection (family revocation), and API-key authentication.
 - Pull-based local Pub/Sub worker.
-- Duplicate-message idempotency handling.
-- Request IDs, structured logs, usage logging, quotas, retries, and circuit breakers.
-- In-memory and Redis-backed rate limiting.
+- Retries, provider timeouts, and a Gemini circuit breaker wired into the
+  embedding, generation, storage, and publish paths (`reliability.py`).
+- Duplicate-message idempotency handling (atomic claim with a 10-minute lease;
+  see `store.claim_document`).
+- Request IDs, structured logs, usage logging (input/output tokens and cost
+  estimate written by the ask and worker paths since R4.5), quotas, and rate
+  limiting.
+- In-memory and Redis-backed rate limiting (epoch-clock refill, graceful
+  per-process fallback on Redis outage).
 - Deny-by-default CORS and security response headers.
 - Upload-size enforcement.
 - Hard-delete document and account workflows.
@@ -38,15 +49,29 @@ user account, secret, or deployment has been attached.
 
 ### Local tooling and infrastructure
 
-- Terraform definitions for Cloud Run, Cloud SQL, Storage, Pub/Sub, Secret Manager, and
-  monitoring resources.
+- Terraform definitions for Cloud Run, Cloud SQL, Storage, Pub/Sub, Secret
+  Manager, and monitoring (three alert policies, an email notification channel,
+  and an ask-availability SLO — `infrastructure/terraform/main.tf` is the source
+  of truth; `infrastructure/monitoring/slo.yaml` is superseded and kept only as
+  a reference). The worker receives Pub/Sub push deliveries with OIDC, with a
+  dead-letter topic and policy attached.
+- One-command free-tier deployment scripts (`scripts/deploy-cloudrun.*`,
+  `scripts/pull-and-deploy.*`) that provision a working environment end to end,
+  independent of Terraform.
 - Standard Docker Compose PostgreSQL/Redis stack.
 - Full emulator Compose stack with PostgreSQL, Redis, fake-gcs-server, Pub/Sub emulator,
   API, worker, migrations, and initialization services.
 - Local async smoke-test harness.
 - Local PostgreSQL backup/restore integrity script.
-- Locust load-test configuration with optional authentication.
-- Migration runner for migrations 001–007.
+- Locust load profile (`scripts/locustfile.py`) covering register, ask, upload,
+  and document listing; it runs against the local stack (LOCAL_GENERATION) or a
+  deployed environment.
+- Migration runner for migrations 001–013.
+- One-command R6 evidence runner (`scripts/r6_evidence.{sh,ps1}`) executing the
+  full local checklist and teeing output to `docs/evidence/`.
+- Chaos drill stack (`docker-compose.chaos.yml` +
+  `scripts/emulator_chaos_test.py`): Redis loss and Pub/Sub redelivery storm,
+  wired as a CI job.
 
 ### Quality and security tooling
 
@@ -58,8 +83,10 @@ user account, secret, or deployment has been attached.
 - pip-audit workflow.
 - CodeQL workflow.
 - Trivy filesystem security scan workflow.
-- Prompt-injection, tenant-isolation, malformed-delivery, worker-failure, and oversized-
-  upload tests.
+- Prompt-injection prompt construction tests (the unit test asserts hostile
+  text is framed as data; **behavioral** injection testing against a real model
+  is pending live-Gemini validation), tenant-isolation, malformed-delivery,
+  worker-failure, and oversized-upload tests.
 
 ## Validation currently passing
 
@@ -74,8 +101,10 @@ user account, secret, or deployment has been attached.
 
 ## Pending local execution evidence
 
-These are implemented but cannot be executed in the current workspace because Docker,
-Podman, nerdctl, and PostgreSQL client tools are unavailable.
+These are implemented but not yet executed in the current workspace (a shell/tool
+outage blocked command execution during the final stretch). One command produces
+all of the evidence below: `scripts/r6_evidence.sh` / `scripts/r6_evidence.ps1`
+(see `docs/launch-checklist.md` §1 for the exact invocation).
 
 ### Phase 10
 
@@ -143,7 +172,7 @@ After those prerequisites exist, the remaining execution sequence is:
 1. Run `scripts/staging_preflight.ps1`.
 2. Run and review Terraform plan.
 3. Apply Terraform to staging.
-4. Apply migrations 001–007 to Cloud SQL.
+4. Apply migrations 001–008 to Cloud SQL.
 5. Deploy API and worker images.
 6. Verify Secret Manager access.
 7. Run authenticated registration, upload, status, ask, duplicate, delete, and account-
@@ -155,22 +184,25 @@ After those prerequisites exist, the remaining execution sequence is:
 
 ## Known design limitations
 
-- Cloud Run worker deployment still requires a final review of its production message
-  delivery configuration.
 - Real Cloud SQL connectivity, connection pooling, and pgvector performance are not
   validated.
 - Cloud IAM, quotas, naming collisions, managed-service latency, and billing behavior
   are unverified.
 - Live Redis deployment is not validated.
 - Cloud Monitoring dashboards and alert delivery are not validated.
-- Backup restore has only been implemented as a local procedure, not executed here.
+- Backup restore has only been implemented as a local procedure; the evidence run is
+  pending.
 - The current trust documents are drafts and require jurisdiction-specific review.
-- Local deterministic embeddings are intended only for emulator testing.
+- Local deterministic embeddings and answers are intended only for emulator testing.
+- HNSW/pgvector indexing is deliberately deferred until staging load numbers exist
+  (F7; see `docs/decisions.md`).
 
 ## Authoritative references
 
 - [Build plan](../Plan.md)
 - [Local completion roadmap](local-completion-roadmap.md)
+- [Feature explainer](feature-explainer.md)
+- [Launch checklist](launch-checklist.md)
 - [Validation status](validation-status.md)
 - [Phase 15 deployment gate](phase15-deployment-gate.md)
 - [Security hardening](security-hardening.md)

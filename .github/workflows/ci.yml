@@ -27,8 +27,12 @@ jobs:
         run: uv run ruff format --check .
       - name: Type check
         run: uv run mypy src
-      - name: Unit tests
-        run: uv run pytest -m "not integration and not live"
+      - name: Unit tests with coverage
+        run: >-
+          uv run pytest -m "not integration and not live"
+          --cov=knowledgeforge --cov-report=term --cov-report=json:coverage.json
+      - name: Coverage ratchet
+        run: uv run python scripts/coverage_ratchet.py coverage.json
 
   integration:
     runs-on: ubuntu-latest
@@ -89,6 +93,27 @@ jobs:
         if: always()
         run: docker compose -f docker-compose.full.yml down --volumes --remove-orphans
 
+  emulator-chaos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start local emulator stack with chaos overrides
+        run: >-
+          docker compose -f docker-compose.full.yml -f docker-compose.chaos.yml
+          up -d --build --scale smoke=0
+      - name: Run chaos drills (Redis loss + Pub/Sub redelivery storm)
+        run: docker compose -f docker-compose.full.yml -f docker-compose.chaos.yml run --rm chaos
+      - name: Collect emulator logs
+        if: always()
+        run: >-
+          docker compose -f docker-compose.full.yml -f docker-compose.chaos.yml
+          logs --no-color
+      - name: Stop local emulator stack
+        if: always()
+        run: >-
+          docker compose -f docker-compose.full.yml -f docker-compose.chaos.yml
+          down --volumes --remove-orphans
+
   live-external:
     if: github.event_name == 'schedule' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -107,6 +132,10 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: uv run python scripts/gemini_smoke_test.py
+      - name: Live prompt-injection behavior test
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: uv run pytest -m live
       - name: Live local-corpus retrieval evaluation
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

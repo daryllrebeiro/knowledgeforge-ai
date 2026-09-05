@@ -2,7 +2,7 @@ import json
 from collections.abc import Callable
 from uuid import UUID
 
-from knowledgeforge.ingestion.jobs import IngestionJob, should_process
+from knowledgeforge.ingestion.jobs import IngestionJob
 
 
 def parse_job(payload: bytes) -> IngestionJob:
@@ -18,12 +18,16 @@ def parse_job(payload: bytes) -> IngestionJob:
 def process_job(
     payload: bytes,
     *,
-    get_status: Callable[[UUID], str],
+    claim: Callable[[IngestionJob], bool],
     process: Callable[[IngestionJob], None],
 ) -> bool:
-    """Process a delivery once; already-ready documents are acknowledged as duplicates."""
+    """Process a delivery once; unclaimable documents are acknowledged duplicates.
+
+    The claim is an atomic database state transition, so concurrent redeliveries
+    of the same message cannot both run the pipeline.
+    """
     job = parse_job(payload)
-    if not should_process(get_status(job.document_id)):
+    if not claim(job):
         return False
     process(job)
     return True
@@ -32,8 +36,8 @@ def process_job(
 def handle_delivery(
     payload: bytes,
     *,
-    get_status: Callable[[UUID], str],
+    claim: Callable[[IngestionJob], bool],
     process: Callable[[IngestionJob], None],
 ) -> bool:
     """Process a delivery and let malformed payloads reach Pub/Sub retry/DLQ."""
-    return process_job(payload, get_status=get_status, process=process)
+    return process_job(payload, claim=claim, process=process)

@@ -1,0 +1,43 @@
+name: Eval regression gate
+
+# F6: golden-set evaluation with quality floors on release branches. Runs the
+# full Gemini evaluation (cost control: not on every PR) and fails the run when
+# Hit@5 / answer correctness / refusal accuracy drop below the floors in
+# evaluation/eval-thresholds.json. Raise floors deliberately with:
+#   uv run python -m evaluation.check_thresholds --update <reference.json>
+
+on:
+  push:
+    branches: ["release/**", "releases/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  eval-gate:
+    if: github.event_name == 'workflow_dispatch' || vars.EVAL_GATE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: latest
+      - name: Install dependencies
+        run: uv sync --dev
+      - name: Run golden-set evaluation
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: uv run python evaluation/run_phase12_eval.py --output eval-report.json
+      - name: Check quality floors
+        run: uv run python -m evaluation.check_thresholds eval-report.json
+      - name: Upload evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-gate-report
+          path: eval-report.json

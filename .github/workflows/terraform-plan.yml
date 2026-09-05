@@ -1,0 +1,92 @@
+name: Terraform plan
+
+# R5.7: plan-only preview of infrastructure changes on pull requests.
+# Apply is NEVER run from CI — it stays a reviewed, manual `terraform apply`
+# (see docs/decisions.md, "Infrastructure change process").
+#
+# Requires repository configuration before this job does anything:
+#   vars.TERRAFORM_PLAN_ENABLED = "true"
+#   vars.GCP_PROJECT_ID         = target project id
+#   vars.GCP_WIF_PROVIDER       = workload identity federation provider
+#                                 (projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>)
+#   vars.GCP_SERVICE_ACCOUNT    = service account email with viewer permissions
+#                                 sufficient for `terraform plan`
+#   secrets.TF_VAR_DATABASE_PASSWORD, TF_VAR_GEMINI_API_KEY, TF_VAR_JWT_SECRET_KEY
+# Until those exist, the job is skipped — the validate-only `terraform` job in
+# ci.yml still runs on every PR.
+
+on:
+  pull_request:
+    paths:
+      - "infrastructure/terraform/**"
+      - ".github/workflows/terraform-plan.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    if: vars.TERRAFORM_PLAN_ENABLED == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Terraform setup
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.9
+
+      - name: Google auth (workload identity federation)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Terraform init
+        working-directory: infrastructure/terraform
+        run: terraform init -backend=false
+
+      - name: Terraform plan
+        id: plan
+        working-directory: infrastructure/terraform
+        env:
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+          # Image references are decided at deploy time; placeholders keep the
+          # plan valid without pinning a specific build.
+          TF_VAR_api_image: "us-docker.pkg.dev/placeholder/api:plan-only"
+          TF_VAR_worker_image: "us-docker.pkg.dev/placeholder/worker:plan-only"
+          TF_VAR_alert_email: ${{ vars.ALERT_EMAIL }}
+        run: |
+          set +e
+          terraform plan -no-color -detailed-exitcode -input=false -out=tfplan
+          code=$?
+          echo "exitcode=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Report plan result
+        if: github.event_name == 'pull_request'
+        env:
+          EXITCODE: ${{ steps.plan.outputs.exitcode }}
+        run: |
+          case "$EXITCODE" in
+            0) verdict="No infrastructure changes." ;;
+            2) verdict="Infrastructure changes detected — plan artifact attached. Apply is manual and reviewed." ;;
+            *) verdict="terraform plan failed — see logs. (exit $EXITCODE)" ;;
+          esac
+          {
+            echo "### Terraform plan: $verdict"
+            echo '```hcl'
+            cd infrastructure/terraform && terraform show -no-color tfplan 2>/dev/null | head -c 50000
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload plan artifact
+        if: steps.plan.outputs.exitcode == '2'
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: infrastructure/terraform/tfplan
+          retention-days: 7

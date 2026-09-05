@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from hashlib import sha256
+from uuid import UUID
 
 
 @dataclass(frozen=True)
@@ -13,10 +14,17 @@ def content_hash(content: bytes) -> str:
 
 
 def decide_dedup(
-    existing_hash: str | None, existing_version: int | None, incoming_hash: str
+    existing: tuple[UUID, int] | None,
+    previous: tuple[UUID, int] | None,
 ) -> DedupDecision:
-    if existing_hash is None:
-        return DedupDecision("new", 1)
-    if existing_hash == incoming_hash:
-        return DedupDecision("duplicate", existing_version or 1)
-    return DedupDecision("new_version", (existing_version or 1) + 1)
+    """Decide what an upload should do given the tenant's prior lookups.
+
+    ``existing`` is the tenant's document with the same content hash (any hit is
+    a byte-identical duplicate); ``previous`` is the latest document with the
+    same filename (re-uploaded content becomes its next version).
+    """
+    if existing is not None:
+        return DedupDecision("duplicate", existing[1])
+    if previous is not None:
+        return DedupDecision("new_version", previous[1] + 1)
+    return DedupDecision("new", 1)

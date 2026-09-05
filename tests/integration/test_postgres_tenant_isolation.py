@@ -55,8 +55,8 @@ def test_real_pgvector_retrieval_is_tenant_scoped(database_url: str) -> None:
                     )
 
             results = retrieve_chunks(connection, embedding, tenant_id=tenant_a, limit=10)
-            assert [document_id for document_id, _ in results] == [document_a]
-            assert results[0][1].text == "secret-private-a"
+            assert [document_id for _, document_id, _ in results] == [document_a]
+            assert results[0][2].text == "secret-private-a"
     finally:
         with psycopg.connect(database_url) as connection:
             with connection.transaction():

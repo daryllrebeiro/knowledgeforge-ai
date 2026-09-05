@@ -1,8 +1,19 @@
 import hashlib
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any, cast
 
 from google import genai
+
+from knowledgeforge.reliability import with_retry
+
+
+@dataclass(frozen=True)
+class EmbeddingResult:
+    """Batched embedding output plus the token usage it consumed."""
+
+    vectors: list[list[float]]
+    input_tokens: int
 
 
 def embed_texts_local(texts: Sequence[str], dimensions: int = 768) -> list[list[float]]:
@@ -18,18 +29,20 @@ def embed_texts_local(texts: Sequence[str], dimensions: int = 768) -> list[list[
     return vectors
 
 
+@with_retry
 def embed_texts(
     client: genai.Client,
     texts: Sequence[str],
     *,
     model: str,
     batch_size: int = 100,
-) -> list[list[float]]:
+) -> EmbeddingResult:
     """Embed texts in bounded batches so ingestion never makes one call per chunk."""
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
 
     embeddings: list[list[float]] = []
+    input_tokens = 0
     for start in range(0, len(texts), batch_size):
         batch = list(texts[start : start + batch_size])
         response = client.models.embed_content(model=model, contents=cast(Any, batch))
@@ -39,4 +52,7 @@ def embed_texts(
             if item.values is None:
                 raise RuntimeError("Gemini returned an embedding without values")
             embeddings.append(list(item.values))
-    return embeddings
+        usage = response.usage_metadata
+        if usage is not None and usage.prompt_token_count is not None:
+            input_tokens += usage.prompt_token_count
+    return EmbeddingResult(vectors=embeddings, input_tokens=input_tokens)

@@ -1,0 +1,18 @@
+{
+  "baseline-500-100-vector": {
+    "hit_at_5": 0.0,
+    "answer_correctness": 0.0,
+    "refusal_accuracy": 0.0
+  },
+  "baseline-500-100-hybrid": {
+    "hit_at_5": 0.0
+  },
+  "section-aware-500-100-vector": {
+    "hit_at_5": 0.0,
+    "answer_correctness": 0.0,
+    "refusal_accuracy": 0.0
+  },
+  "section-aware-500-100-hybrid": {
+    "hit_at_5": 0.0
+  }
+}

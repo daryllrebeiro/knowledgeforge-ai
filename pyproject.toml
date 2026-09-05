@@ -16,7 +16,7 @@ dependencies = [
   "pypdf>=5.0,<6.0",
   "python-docx>=1.1,<2.0",
   "markdown-it-py>=3.0,<4.0",
-  "psycopg[binary]>=3.2,<4.0",
+  "psycopg[binary,pool]>=3.2,<4.0",
   "pgvector>=0.3,<1.0",
   "python-multipart>=0.0.20,<1.0",
   "python-jose[cryptography]>=3.3,<4.0",
@@ -33,6 +33,7 @@ dev = [
   "mypy>=1.14,<2.0",
   "pre-commit>=4.0,<5.0",
   "pytest>=8.3,<9.0",
+  "pytest-cov>=6.0,<7.0",
   "ruff>=0.9,<1.0",
   "types-passlib>=1.7,<2.0",
   "types-python-jose>=3.3,<4.0",
@@ -45,6 +46,7 @@ dev = [
   "mypy>=1.14,<2.0",
   "pre-commit>=4.0,<5.0",
   "pytest>=8.3,<9.0",
+  "pytest-cov>=6.0,<7.0",
   "ruff>=0.9,<1.0",
 ]
 
@@ -60,6 +62,8 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Repo root so tests can import the evaluation/ and scripts/ tooling.
+pythonpath = ["."]
 addopts = "-q"
 markers = [
   "integration: requires real local service dependencies",
