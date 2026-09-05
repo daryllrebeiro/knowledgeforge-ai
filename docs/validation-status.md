@@ -1,11 +1,16 @@
-# Validation status
+﻿# Validation status
 
 ## Local/CI-complete checks
 
-- Phases 1–3: extraction, chunking, prompting, retrieval, evaluation harness, and API contract tests.
+- Phases 1â€“3: extraction, chunking, prompting, retrieval, evaluation harness, and API contract tests.
 - Phase 4: JWT/password tests, protected-route tests, tenant propagation, and prompt-injection coverage.
 - Phase 5: job idempotency, async worker pipeline code, status transitions, and cloud adapter configuration.
-- Phase 6: structured request logging, request-log persistence, retry/circuit-breaker tests, and SLO/runbook artifacts.
+- Phase 6: structured request logging, request-log persistence, SLO/runbook artifacts,
+  and retries/timeouts/circuit breaker wired into the Gemini, storage, and publish
+  paths (previously the reliability module existed with tests but was never called â€”
+  corrected 2026-09-03; see `docs/decisions.md`). Token/cost telemetry is written by
+  the ask and worker paths as of 2026-09-03 (R4.5); costs are zero until
+  `GEMINI_INPUT/OUTPUT_TOKEN_COST` reflect real pricing.
 - Phase 7: rate-limit, quota, and usage aggregation code/tests.
 - Phase 8: Terraform formatting and `terraform validate`.
 
@@ -24,7 +29,7 @@ These checks cannot be truthfully completed without the target services:
 
 ## Phase 8.5 evidence log
 
-### Task 1 — GCP project and API provisioning
+### Task 1 â€” GCP project and API provisioning
 
 Status: blocked at preflight.
 
@@ -160,7 +165,7 @@ Docker stack is now validated account-free.
 for full-stack emulators, database recovery, performance, evaluation, security, trust,
 and onboarding work that can proceed without GCP.
 
-## Roadmap start evidence — 2026-08-24
+## Roadmap start evidence â€” 2026-08-24
 
 Completed in the current workspace:
 
@@ -194,7 +199,7 @@ Workstream B implementation started:
   or a document that does not exist.
 - Static checks and the full local test suite remain passing after these changes.
 
-Workstream A/B local Docker execution — 2026-08-24:
+Workstream A/B local Docker execution â€” 2026-08-24:
 
 - Docker Desktop engine: client/server 29.7.2, healthy.
 - Full Compose stack built successfully with PostgreSQL/pgvector, Redis, fake GCS,
@@ -218,3 +223,84 @@ Account-free Phase 15 gate check on 2026-08-23:
 - Git diff validation: passed.
 - `gcloud` executable: unavailable.
 - GCP project, billing, credentials, and deployment: unavailable by design.
+
+## Roadmap execution status â€” 2026-09-03 (R1â€“R7, F1â€“F8)
+
+Everything code-writable in the roadmap is implemented. The session that completed
+this stretch had no shell access (tool outage), so **no commands were re-run that
+day** â€” every item below is implementation status plus static verification only.
+Execution evidence comes from `scripts/r6_evidence.sh` / `.ps1` (see
+`docs/launch-checklist.md` Â§1).
+
+Implementation completed in this stretch (all with tests written alongside):
+
+- R1 fixes: citation attribution, DELETE 404 semantics, limiter clock/fallback,
+  worker idempotency claim.
+- R2: retry/timeout/breaker wiring, boot-time secret validation.
+- R3: eval harness corrections + 40-question golden set; quality-gate ratchet
+  (`evaluation/check_thresholds.py`, floors in `evaluation/eval-thresholds.json`).
+- R4: pooling, upload streaming guard, registration error semantics, mandatory
+  tenant scoping, token/cost telemetry, batch upload quotas, structured logging,
+  API-key/refresh-token auth, usage dashboard.
+- R5: complete Terraform graph incl. push subscription with OIDC, dead-letter
+  policy, monitoring-as-code (3 alert policies + SLO), plan-only CI workflow;
+  the api/worker env dependency cycle is resolved via `local.worker_subscription`.
+- R6 preparation: `scripts/r6_evidence.{sh,ps1}` (one-command evidence runner),
+  `docker-compose.chaos.yml` + `scripts/emulator_chaos_test.py` (Redis-loss and
+  redelivery-storm drills, wired as a CI job), `scripts/locustfile.py` load
+  profile, and `LOCAL_GENERATION` mode so `/ask` runs end-to-end on the emulator
+  stack (smoke test now asserts a cited answer, plain + SSE).
+- R7: free-tier deploy scripts (`scripts/deploy-cloudrun.*`, `pull-and-deploy.*`).
+- F1: conversations, follow-up rewriting, `/ask/stream` SSE.
+- F2â€“F5: embedding cache, doc_type filter, chunk preview, reingest,
+  .txt/.html ingestion, refresh-token rotation with replay detection, API keys.
+- F6: eval gate + coverage ratchet (`.coverage-floor`, CI steps), chaos drills.
+- F7: HNSW deliberately deferred â€” measure first (decision in `docs/decisions.md`).
+- F8: trust documents remain drafts; legal-review checklist in
+  `docs/launch-checklist.md` Â§6.
+
+Known execution gates (see `docs/launch-checklist.md` for the full list):
+
+- uv.lock is generated (2026-09-04, 96 packages resolved) but not yet committed;
+  commit it before the next image build so CI and production run identical sets.
+- `fake-gcs-server` is still `:latest` in `docker-compose.full.yml`; the digest-pin
+  procedure is documented above the service definition.
+- Coverage floor and eval floors are at their zero baselines until the first real
+  runs; raise them with the `--update` flags and commit.
+- The final `ruff`/`mypy`/`pytest` pass for this stretch has not been executed
+  (shell outage); run `scripts/r6_evidence.sh` or the CI pipeline to produce it.
+
+## 2026-09-04 - Phase 2.5 structured extraction (local evidence)
+
+Locally validated, zero cloud credentials:
+
+- Migration 014 applies cleanly alongside 001-013 against fresh PostgreSQL
+  (all four new tables + documents columns verified; applied inside the
+  emulator Postgres).
+- PostgreSQL integration suite (8 tests) passes against a real database:
+  tenant-scoped uniqueness, reprocess replacement, active-job uniqueness,
+  sync-path ineligibility, claim/outbox lifecycle, allow-listed field filters,
+  tenant isolation, document-deletion cascades (extractions, failures, jobs,
+  outbox rows).
+- Unit suites: 21 extraction pipeline/schema/classifier tests + 10 OCR/eval
+  tests + 10 extraction API route tests, all passing.
+- Full emulator stack (API, ingestion worker, extraction worker, outbox
+  dispatcher) builds and the extended lifecycle smoke test passes end-to-end:
+  upload invoice -> outbox dispatch -> extraction worker -> extraction row ->
+  reprocess 202 -> job succeeded -> structured-filter ask with
+  `[doc N, extracted fields]` citation -> document deletion cascades the
+  extraction row. Extraction worker logs show job start/success per job.
+- `check_extraction_accuracy.py` runs against the golden-set template with
+  deterministic normalization (ISO dates, numeric totals, casefolds); the
+  floor stays at the 0.0 baseline until the first real Gemini run.
+- Bugs found and fixed while validating the rebuilt stack: `_read_upload`
+  dropped all upload bytes (missing `parts.append`), plain-list embeddings
+  fail pgvector 0.5's `<=>` operator (now wrapped in `Vector`), nullable
+  filter params hit indeterminate-type errors under the new psycopg (filters
+  now built as present-only clauses), and SSE `done` events failed on UUID
+  serialization (`model_dump(mode="json")`).
+
+Credential-gated (wired, waiting): real Gemini classification/extraction
+against the golden set, free-tier Cloud Run deployment via
+`scripts/deploy-cloudrun.{sh,ps1}` including the extraction service, outbox
+Cloud Run Job + Scheduler trigger, and live `deploy_smoke_test.py`.
