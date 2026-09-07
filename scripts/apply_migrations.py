@@ -4,6 +4,24 @@ from pathlib import Path
 import psycopg
 
 
+CONCURRENT_SUFFIX = ".concurrent.sql"
+
+
+def _is_concurrent_migration(filename: str) -> bool:
+    return filename.endswith(CONCURRENT_SUFFIX)
+
+
+def _apply_migration(connection: psycopg.Connection, sql: str, concurrent: bool) -> None:
+    if concurrent:
+        connection.autocommit = True
+        try:
+            connection.execute(sql)
+        finally:
+            connection.autocommit = False
+    else:
+        connection.execute(sql)
+
+
 def main() -> None:
     database_url = os.environ["DATABASE_URL"]
     migration_dir = Path(__file__).resolve().parents[1] / "migrations"
@@ -36,7 +54,9 @@ def main() -> None:
             for migration in migrations:
                 if migration.name in applied:
                     continue
-                connection.execute(migration.read_text(encoding="utf-8"))
+                sql = migration.read_text(encoding="utf-8")
+                concurrent = _is_concurrent_migration(migration.name)
+                _apply_migration(connection, sql, concurrent)
                 connection.execute(
                     "INSERT INTO schema_migrations (filename) VALUES (%s)",
                     (migration.name,),
