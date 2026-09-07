@@ -12,22 +12,39 @@ from knowledgeforge.ingestion.embed_cache import embed_texts_cached
 from knowledgeforge.ingestion.extract import extract_pdf
 from knowledgeforge.ingestion.extract_docx import extract_docx
 from knowledgeforge.ingestion.extract_markdown import extract_markdown
-from knowledgeforge.ingestion.extract_ocr import build_ocr_provider, is_image_upload, mime_type_for
+from knowledgeforge.ingestion.extract_pptx import extract_pptx, PPTXExtractionError
+from knowledgeforge.ingestion.extract_csv import extract_csv, CSVExtractionError
 from knowledgeforge.ingestion.extract_text import extract_html, extract_text
 from knowledgeforge.ingestion.jobs import IngestionJob
 from knowledgeforge.ingestion.store import record_request_log, store_chunks
-from knowledgeforge.reliability import CircuitBreaker
+from knowledgeforge.reliability import CircuitBreaker, build_circuit_breaker, make_redis_key
+from knowledgeforge.security.budget import get_extraction_budget
 from knowledgeforge.worker.cloud import CloudStorageClient
 
 _worker_breaker: CircuitBreaker | None = None
 
 
+def _build_worker_redis_client(settings: Settings) -> object | None:
+    """Build Redis client for worker circuit breaker."""
+    if not settings.redis_url:
+        return None
+    try:
+        import redis  # type: ignore[import-not-found]
+        return redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    except ImportError:
+        return None
+
+
 def _gemini_breaker(settings: Settings) -> CircuitBreaker:
+    """Worker circuit breaker for embedding calls, with shared Redis state when configured."""
     global _worker_breaker
     if _worker_breaker is None:
-        _worker_breaker = CircuitBreaker(
-            failure_threshold=settings.gemini_breaker_failure_threshold,
-            recovery_seconds=settings.gemini_breaker_recovery_seconds,
+        redis_client = _build_worker_redis_client(settings)
+        _worker_breaker = build_circuit_breaker(
+            redis_client,
+            make_redis_key("breaker:worker:embedding"),
+            settings.gemini_breaker_failure_threshold,
+            settings.gemini_breaker_recovery_seconds,
         )
     return _worker_breaker
 
@@ -46,6 +63,16 @@ def process_ingestion_job(job: IngestionJob, settings: Settings) -> None:
         pages = _ocr_pages(content, filename, settings, job.tenant_id)
     elif filename.endswith(".docx"):
         pages = extract_docx(BytesIO(content))
+    elif filename.endswith(".pptx"):
+        try:
+            pages = extract_pptx(BytesIO(content))
+        except PPTXExtractionError as exc:
+            raise ValueError(f"PPTX guard rejection: {exc}") from exc
+    elif filename.endswith(".csv"):
+        try:
+            pages = extract_csv(BytesIO(content))
+        except CSVExtractionError as exc:
+            raise ValueError(f"CSV guard rejection: {exc}") from exc
     elif filename.endswith((".html", ".htm")):
         pages = extract_html(BytesIO(content))
     elif filename.endswith((".txt", ".text")):
@@ -85,6 +112,16 @@ def process_ingestion_job(job: IngestionJob, settings: Settings) -> None:
             # its extraction trigger (transactional outbox). Only documents
             # with a stored original are extraction-eligible; the insert is a
             # no-op when an active job already exists (duplicate delivery).
+            # Check extraction budget before creating the job
+            extraction_budget = get_extraction_budget()
+            if extraction_budget is not None:
+                allowed, current_usage, _ = extraction_budget.check_and_reserve(str(job.tenant_id), 1)
+                if not allowed:
+                    from knowledgeforge.config import get_settings
+                    settings = get_settings()
+                    raise ValueError(
+                        f"Daily extraction budget exceeded: {current_usage}/{settings.daily_extraction_budget}"
+                    )
             insert_extraction_job(
                 connection,
                 document_id=job.document_id,

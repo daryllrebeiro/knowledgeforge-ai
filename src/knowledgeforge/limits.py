@@ -6,6 +6,9 @@ from time import monotonic
 
 from fastapi import HTTPException, status
 
+from knowledgeforge.config import get_settings
+from knowledgeforge.reliability import make_redis_key
+
 logger = logging.getLogger("knowledgeforge.limits")
 
 
@@ -97,7 +100,7 @@ class RedisTokenBucketLimiter:
             allowed = self._client.eval(  # type: ignore[attr-defined]
                 self._SCRIPT,
                 1,
-                f"knowledgeforge:limit:{subject}:{key}",
+                make_redis_key(f"limit:{subject}:{key}"),
                 # Epoch time, not monotonic: monotonic clocks are per-process
                 # and would corrupt refill arithmetic across replicas.
                 time.time(),

@@ -2,6 +2,7 @@ import json
 import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import datetime
 from io import BytesIO
 from time import perf_counter
 from typing import Annotated, BinaryIO, NoReturn
@@ -44,6 +45,8 @@ from knowledgeforge.ingestion.embed import embed_texts, embed_texts_local
 from knowledgeforge.ingestion.embed_cache import embed_texts_cached
 from knowledgeforge.ingestion.extract import extract_pdf
 from knowledgeforge.ingestion.extract_docx import extract_docx
+from knowledgeforge.ingestion.extract_pptx import extract_pptx, PPTXExtractionError
+from knowledgeforge.ingestion.extract_csv import extract_csv, CSVExtractionError
 from knowledgeforge.ingestion.extract_markdown import extract_markdown
 from knowledgeforge.ingestion.extract_text import extract_html, extract_text
 from knowledgeforge.ingestion.store import (
@@ -55,6 +58,8 @@ from knowledgeforge.ingestion.store import (
     find_latest_document_by_filename,
     get_document_detail,
     get_document_ingest_info,
+    list_all_failed_ingestions,
+    list_all_tenants,
     list_document_chunks,
     list_documents,
     list_failed_ingestions,
@@ -69,15 +74,23 @@ from knowledgeforge.ingestion.store import (
 from knowledgeforge.limits import RedisTokenBucketLimiter, TokenBucketLimiter
 from knowledgeforge.limits import limiter as default_limiter
 from knowledgeforge.observability import request_id
-from knowledgeforge.reliability import CircuitBreaker, CircuitOpenError
+from knowledgeforge.reliability import CircuitBreaker, CircuitOpenError, build_circuit_breaker, make_redis_key
 from knowledgeforge.retrieval.retrieve import retrieve_chunks
 from knowledgeforge.security.api_keys import create_api_key, list_api_keys, revoke_api_key
 from knowledgeforge.security.auth import (
     create_access_token,
     get_current_user,
+    get_user_role_for_tenant,
+    get_user_platform_admin,
     hash_password,
     verify_password,
+    accept_invitation,
+    create_invitation,
+    require_owner,
+    require_platform_admin,
+    ensure_owner_remaining,
 )
+from knowledgeforge.security.budget import BudgetExceeded, estimate_token_cost, get_token_budget, get_extraction_budget
 from knowledgeforge.security.refresh import (
     InvalidRefreshToken,
     create_refresh_token,
@@ -113,6 +126,10 @@ class AskRequest(BaseModel):
     document_id: UUID | None = None
     # Restrict retrieval to one document type ("pdf", "docx", "markdown", "text", "html").
     doc_type: str | None = Field(default=None, max_length=20)
+    # Optional metadata filters for retrieval scope (F2).
+    filename: str | None = Field(default=None, max_length=500)
+    created_after: datetime | None = None
+    created_before: datetime | None = None
     # When set, the question is treated as a follow-up in that conversation:
     # it is rewritten standalone before retrieval and the exchange is persisted.
     conversation_id: UUID | None = None
@@ -191,6 +208,57 @@ class BatchUploadResponse(BaseModel):
     status: str
     document_id: UUID | None = None
     error: str | None = None
+
+
+class InvitationCreateRequest(BaseModel):
+    role: str = Field(default="member", pattern="^(owner|member)$")
+    email: str | None = Field(default=None, max_length=320)
+
+
+class InvitationCreateResponse(BaseModel):
+    invitation_id: UUID
+    token: str
+    expires_at: str
+    role: str
+
+
+class InvitationAcceptRequest(BaseModel):
+    token: str = Field(min_length=1)
+
+
+class InvitationAcceptResponse(BaseModel):
+    invitation_id: UUID
+    tenant_id: UUID
+    role: str
+
+
+class AdminTenantResponse(BaseModel):
+    tenant_id: UUID
+    name: str
+    created_at: str
+    document_count: int
+    query_count: int
+    cost_estimate: float
+
+
+class AdminTenantListResponse(BaseModel):
+    tenants: list[AdminTenantResponse]
+    limit: int
+    offset: int
+
+
+class AdminFailedIngestionResponse(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    tenant_name: str
+    filename: str
+    error_message: str
+
+
+class AdminFailedIngestionListResponse(BaseModel):
+    failed_ingestions: list[AdminFailedIngestionResponse]
+    limit: int
+    offset: int
 
 
 class ExtractionResponse(BaseModel):
@@ -355,14 +423,20 @@ def register(request: RegisterRequest, http_request: Request) -> TokenResponse:
                         raise RuntimeError("tenant insert did not return an ID")
                     tenant_id = UUID(str(tenant_row[0]))
                     cursor.execute(
-                        "INSERT INTO users (tenant_id, email, hashed_password) "
-                        "VALUES (%s, %s, %s) RETURNING id",
+                        "INSERT INTO users (tenant_id, email, hashed_password, is_platform_admin) "
+                        "VALUES (%s, %s, %s, FALSE) RETURNING id",
                         (tenant_id, request.email.lower(), hash_password(request.password)),
                     )
                     user_row = cursor.fetchone()
                     if user_row is None:
                         raise RuntimeError("user insert did not return an ID")
                     user_id = UUID(str(user_row[0]))
+                    # Add owner membership
+                    cursor.execute(
+                        "INSERT INTO tenant_memberships (tenant_id, user_id, role) "
+                        "VALUES (%s, %s, 'owner')",
+                        (tenant_id, user_id),
+                    )
     except psycopg.errors.UniqueViolation as exc:
         raise HTTPException(status_code=409, detail="Email already registered") from exc
     except HTTPException:
@@ -376,7 +450,7 @@ def register(request: RegisterRequest, http_request: Request) -> TokenResponse:
     with get_connection() as connection:
         refresh_token = create_refresh_token(connection, user_id)
     return TokenResponse(
-        access_token=create_access_token(user_id, tenant_id), refresh_token=refresh_token
+        access_token=create_access_token(user_id, tenant_id, "owner", False), refresh_token=refresh_token
     )
 
 
@@ -391,17 +465,20 @@ def login(request: LoginRequest, http_request: Request) -> TokenResponse:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT id, tenant_id, hashed_password FROM users WHERE email = %s",
+                "SELECT id, tenant_id, hashed_password, is_platform_admin FROM users WHERE email = %s",
                 (request.email.lower(),),
             )
             row = cursor.fetchone()
     if row is None or not verify_password(request.password, str(row[2])):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     user_id, tenant_id = UUID(str(row[0])), UUID(str(row[1]))
+    is_platform_admin = row[3] if row[3] is not None else False
+    # Fetch user's role for this tenant
+    role = get_user_role_for_tenant(user_id, tenant_id) or "member"
     with get_connection() as connection:
         refresh_token = create_refresh_token(connection, user_id)
     return TokenResponse(
-        access_token=create_access_token(user_id, tenant_id), refresh_token=refresh_token
+        access_token=create_access_token(user_id, tenant_id, role, is_platform_admin), refresh_token=refresh_token
     )
 
 
@@ -423,8 +500,11 @@ def refresh(request: RefreshRequest, http_request: Request) -> TokenResponse:
             )
         except InvalidRefreshToken as exc:
             raise HTTPException(status_code=401, detail="Invalid refresh token") from exc
+    # Re-fetch current role and platform_admin status at refresh time
+    role = get_user_role_for_tenant(user_id, tenant_id) or "member"
+    is_platform_admin = get_user_platform_admin(user_id)
     return TokenResponse(
-        access_token=create_access_token(user_id, tenant_id), refresh_token=new_refresh
+        access_token=create_access_token(user_id, tenant_id, role, is_platform_admin), refresh_token=new_refresh
     )
 
 
@@ -432,7 +512,7 @@ def refresh(request: RefreshRequest, http_request: Request) -> TokenResponse:
 def logout(
     request: RefreshRequest,
     http_request: Request,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> None:
     """Revoke the refresh-token family behind the presented token."""
     settings = get_settings()
@@ -443,10 +523,62 @@ def logout(
         revoke_refresh_family(connection, request.refresh_token)
 
 
+@router.post(
+    "/invitations",
+    response_model=InvitationCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_new_invitation(
+    request: InvitationCreateRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> InvitationCreateResponse:
+    """Create an invitation for the current user's tenant (owner only).
+
+    Returns the plaintext token exactly once; only its hash is stored.
+    """
+    _, tenant_id, _ = current_user
+    with get_connection() as connection:
+        invitation_id, token = create_invitation(connection, tenant_id, request.role, request.email)
+    # We need to fetch the expires_at for the response
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT expires_at FROM invitations WHERE id = %s",
+                (invitation_id,),
+            )
+            row = cursor.fetchone()
+    if row is None:
+        raise RuntimeError("invitation not found after creation")
+    expires_at = str(row[0])
+    return InvitationCreateResponse(
+        invitation_id=invitation_id, token=token, expires_at=expires_at, role=request.role
+    )
+
+
+@router.post("/invitations/accept", response_model=InvitationAcceptResponse)
+def accept_invitation_endpoint(
+    request: InvitationAcceptRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> InvitationAcceptResponse:
+    """Accept an invitation token and join the tenant."""
+    user_id, _, _, _ = current_user
+    # Fetch user's email for invitation email enforcement
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT email FROM users WHERE id = %s", (user_id,))
+            row = cursor.fetchone()
+    user_email = row[0] if row else None
+    with get_connection() as connection:
+        invitation_id, tenant_id, role = accept_invitation(connection, request.token, user_id, user_email)
+    return InvitationAcceptResponse(
+        invitation_id=invitation_id, tenant_id=tenant_id, role=role
+    )
+
+
 @router.post("/api-keys", response_model=ApiKeyCreatedResponse, status_code=status.HTTP_201_CREATED)
 def create_new_api_key(
     request: ApiKeyCreateRequest,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> ApiKeyCreatedResponse:
     """Create an API key. The plaintext key is returned once and never again."""
     with get_connection() as connection:
@@ -456,7 +588,7 @@ def create_new_api_key(
 
 @router.get("/api-keys", response_model=list[ApiKeyListedResponse])
 def api_keys(
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> list[ApiKeyListedResponse]:
     with get_connection() as connection:
         rows = list_api_keys(connection, current_user[1])
@@ -476,7 +608,7 @@ def api_keys(
 @router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_api_key(
     key_id: UUID,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> None:
     with get_connection() as connection:
         found = revoke_api_key(connection, key_id, current_user[1])
@@ -506,18 +638,83 @@ def _gemini_client() -> genai.Client:
 
 
 _gemini_breaker: CircuitBreaker | None = None
+_gemini_rewrite_breaker: CircuitBreaker | None = None
+_gemini_generation_breaker: CircuitBreaker | None = None
+_gemini_embedding_breaker: CircuitBreaker | None = None
+
+
+def _build_redis_client() -> object | None:
+    """Build Redis client for shared circuit breaker state."""
+    settings = get_settings()
+    if not settings.redis_url:
+        return None
+    try:
+        import redis  # type: ignore[import-not-found]
+        return redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    except ImportError:
+        logger.warning("REDIS_URL configured but redis package unavailable; using per-process breakers")
+        return None
+
+
+def _get_redis_client() -> object | None:
+    """Cached Redis client for circuit breakers."""
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = _build_redis_client()
+    return _redis_client
+
+
+_redis_client: object | None = None
 
 
 def gemini_breaker() -> CircuitBreaker:
-    """Process-wide Gemini circuit breaker, configured from settings."""
-    global _gemini_breaker
-    if _gemini_breaker is None:
+    """Backward-compatible alias; returns the generation breaker."""
+    return gemini_generation_breaker()
+
+
+def gemini_rewrite_breaker() -> CircuitBreaker:
+    """Circuit breaker for rewrite calls, with shared Redis state when configured."""
+    global _gemini_rewrite_breaker
+    if _gemini_rewrite_breaker is None:
         settings = get_settings()
-        _gemini_breaker = CircuitBreaker(
-            failure_threshold=settings.gemini_breaker_failure_threshold,
-            recovery_seconds=settings.gemini_breaker_recovery_seconds,
+        redis_client = _get_redis_client()
+        _gemini_rewrite_breaker = build_circuit_breaker(
+            redis_client,
+            make_redis_key("breaker:rewrite"),
+            settings.gemini_breaker_failure_threshold,
+            settings.gemini_breaker_recovery_seconds,
         )
-    return _gemini_breaker
+    return _gemini_rewrite_breaker
+
+
+def gemini_generation_breaker() -> CircuitBreaker:
+    """Circuit breaker for generation calls, with shared Redis state when configured."""
+    global _gemini_generation_breaker
+    if _gemini_generation_breaker is None:
+        settings = get_settings()
+        redis_client = _get_redis_client()
+        _gemini_generation_breaker = build_circuit_breaker(
+            redis_client,
+            make_redis_key("breaker:generation"),
+            settings.gemini_breaker_failure_threshold,
+            settings.gemini_breaker_recovery_seconds,
+        )
+    return _gemini_generation_breaker
+
+
+def gemini_embedding_breaker() -> CircuitBreaker:
+    """Circuit breaker for embedding calls, with shared Redis state when configured."""
+    global _gemini_embedding_breaker
+    if _gemini_embedding_breaker is None:
+        settings = get_settings()
+        redis_client = _get_redis_client()
+        _gemini_embedding_breaker = build_circuit_breaker(
+            redis_client,
+            make_redis_key("breaker:embedding"),
+            settings.gemini_breaker_failure_threshold,
+            settings.gemini_breaker_recovery_seconds,
+        )
+    return _gemini_embedding_breaker
 
 
 def _raise_provider_unavailable(exc: CircuitOpenError) -> NoReturn:
@@ -584,6 +781,8 @@ def _ingest_upload(
         doc_type = {
             "pdf": "pdf",
             "docx": "docx",
+            "pptx": "pptx",
+            "csv": "csv",
             "md": "markdown",
             "markdown": "markdown",
             "txt": "text",
@@ -599,7 +798,7 @@ def _ingest_upload(
         if doc_type is None:
             raise HTTPException(
                 status_code=415,
-                detail="Supported file types are PDF, DOCX, Markdown, TXT, HTML, "
+                detail="Supported file types are PDF, DOCX, PPTX, CSV, Markdown, TXT, HTML, "
                 "and images (PNG, JPEG, TIFF)",
             )
         if doc_type == "image" and not settings.async_ingestion:
@@ -648,6 +847,16 @@ def _ingest_upload(
             pages = extract_pdf(BytesIO(content))
         elif suffix == "docx":
             pages = extract_docx(BytesIO(content))
+        elif suffix == "pptx":
+            try:
+                pages = extract_pptx(BytesIO(content))
+            except PPTXExtractionError as exc:
+                raise HTTPException(status_code=413, detail=f"PPTX guard rejection: {exc}") from exc
+        elif suffix == "csv":
+            try:
+                pages = extract_csv(BytesIO(content))
+            except CSVExtractionError as exc:
+                raise HTTPException(status_code=413, detail=f"CSV guard rejection: {exc}") from exc
         elif suffix in {"html", "htm"} or content_type == "text/html":
             pages = extract_html(BytesIO(content))
         elif suffix in {"md", "markdown"} or content_type == "text/markdown":
@@ -710,7 +919,7 @@ def _ingest_upload(
 def upload_document(
     request: Request,
     file: Annotated[UploadFile, File(...)],
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> DocumentUploadResponse:
     settings = get_settings()
     content = _read_upload(file.file, request, max_bytes=settings.max_upload_bytes)
@@ -724,7 +933,7 @@ def upload_document(
 @router.post("/documents/batch", response_model=list[BatchUploadResponse])
 def upload_documents_batch(
     files: Annotated[list[UploadFile], File(...)],
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> list[BatchUploadResponse]:
     """Process each file independently so one corrupt document cannot abort the batch."""
     settings = get_settings()
@@ -766,7 +975,7 @@ def upload_documents_batch(
 def documents(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> DocumentListResponse:
     with get_connection() as connection:
         rows = list_documents(connection, current_user[1], limit=limit, offset=offset)
@@ -791,7 +1000,7 @@ def documents(
 def failed_ingestions(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> list[FailedIngestionResponse]:
     with get_connection() as connection:
         rows = list_failed_ingestions(connection, current_user[1], limit=limit, offset=offset)
@@ -803,7 +1012,7 @@ def failed_ingestions(
 @router.get("/documents/{document_id}", response_model=DocumentDetailResponse)
 def document_detail(
     document_id: UUID,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> DocumentDetailResponse:
     with get_connection() as connection:
         detail = get_document_detail(connection, document_id, current_user[1])
@@ -826,7 +1035,7 @@ def document_chunks(
     document_id: UUID,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> ChunkPreviewResponse:
     """Preview what was indexed for a document, chunk by chunk (F3)."""
     with get_connection() as connection:
@@ -851,7 +1060,7 @@ def document_chunks(
 )
 def reingest_document(
     document_id: UUID,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> DocumentUploadResponse:
     """Re-process a finished document from its stored original (F3).
 
@@ -916,7 +1125,7 @@ def _extraction_response(row: DocumentExtractionRow) -> ExtractionResponse:
 @router.get("/documents/{document_id}/extraction", response_model=ExtractionResponse)
 def document_extraction(
     document_id: UUID,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> ExtractionResponse:
     """Latest extraction for a document, or 404 when none exists.
 
@@ -939,7 +1148,7 @@ def extractions(
     needs_review: bool | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> ExtractionListResponse:
     """Tenant-scoped extraction list with allow-listed JSONB field filters."""
     field_filters = {
@@ -972,7 +1181,7 @@ def extractions(
 def extraction_review_queue(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> ExtractionListResponse:
     """Low-confidence extractions (``needs_review = true``), newest first."""
     with get_connection() as connection:
@@ -993,7 +1202,7 @@ def extraction_review_queue(
 @router.get("/extraction-jobs/{job_id}", response_model=ExtractionJobResponse)
 def extraction_job_status(
     job_id: UUID,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> ExtractionJobResponse:
     """Extraction lifecycle view; raw model output is never exposed here."""
     with get_connection() as connection:
@@ -1023,7 +1232,7 @@ def extraction_job_status(
 def reprocess_extraction(
     document_id: UUID,
     request: ReprocessRequest,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> ReprocessResponse:
     """Queue a forced re-extraction (async; the worker performs the model call).
 
@@ -1034,6 +1243,15 @@ def reprocess_extraction(
     """
     settings = get_settings()
     limiter.check(current_user[1], "documents", settings.document_rate_limit_per_minute)
+    # Per-tenant daily extraction budget check
+    extraction_budget = get_extraction_budget()
+    if extraction_budget is not None:
+        allowed, current_usage, _ = extraction_budget.check_and_reserve(str(current_user[1]), 1)
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Daily extraction budget exceeded: {current_usage}/{settings.daily_extraction_budget}",
+            )
     with get_connection() as connection:
         info = get_document_ingest_info(connection, document_id, current_user[1])
     if info is None:
@@ -1128,7 +1346,7 @@ def _prepare_ask(
     # uses the raw question.
     if history and not settings.local_generation:
         try:
-            standalone_question = gemini_breaker().call(
+            standalone_question = gemini_rewrite_breaker().call(
                 lambda: rewrite_followup_question(
                     GeminiTextGenerator(_gemini_client(), settings.gemini_model),
                     request.question,
@@ -1137,13 +1355,18 @@ def _prepare_ask(
             )
         except CircuitOpenError as exc:
             _raise_provider_unavailable(exc)
+        except Exception:
+            # Rewrite failed (provider error, timeout, etc.) — degrade to raw
+            # question rather than failing the ask. The rewrite is best-effort.
+            logger.warning("Follow-up rewrite failed; retrieving with the raw question", exc_info=True)
+            standalone_question = request.question
     if settings.local_embeddings:
         # Same deterministic vectors the worker embeds with in local mode.
         query_embedding = embed_texts_local([standalone_question])[0]
         embed_input_tokens = 0
     else:
         try:
-            embed_result = gemini_breaker().call(
+            embed_result = gemini_embedding_breaker().call(
                 lambda: embed_texts(
                     _gemini_client(),
                     [standalone_question],
@@ -1164,6 +1387,9 @@ def _prepare_ask(
             document_id=request.document_id,
             document_ids=structured_document_ids,
             doc_type=request.doc_type,
+            filename=request.filename,
+            created_after=request.created_after,
+            created_before=request.created_before,
             hybrid=settings.hybrid_search_enabled,
             hybrid_lexical_weight=settings.hybrid_lexical_weight,
         )
@@ -1312,11 +1538,21 @@ def _local_ask_stream(
 def ask(
     request: AskRequest,
     http_request: Request,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> AskResponse:
     started = perf_counter()
     settings = get_settings()
     limiter.check(current_user[1], "ask", settings.ask_rate_limit_per_minute)
+    # Per-tenant daily token budget check (pre-flight estimate)
+    token_budget = get_token_budget()
+    if token_budget is not None:
+        estimated = estimate_token_cost(request.question)
+        allowed, current_usage, _ = token_budget.check_and_reserve(str(current_user[1]), estimated)
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Daily token budget exceeded: {current_usage}/{settings.daily_token_budget}",
+            )
     context = _prepare_ask(request, current_user, settings)
     if settings.local_generation:
         answer_text = local_answer(
@@ -1327,7 +1563,7 @@ def ask(
         output_tokens = 0
     else:
         try:
-            answer = gemini_breaker().call(
+            answer = gemini_generation_breaker().call(
                 lambda: generate_answer(
                     GeminiTextGenerator(_gemini_client(), settings.gemini_model),
                     context.standalone_question,
@@ -1353,6 +1589,10 @@ def ask(
         settings=settings,
         started=started,
     )
+    # Reconcile token budget with actual usage
+    if token_budget is not None:
+        actual_cost = input_tokens + output_tokens
+        token_budget.reconcile(str(current_user[1]), actual_cost)
     return AskResponse(
         answer=answer_text, citations=citations, conversation_id=context.conversation_id
     )
@@ -1362,7 +1602,7 @@ def ask(
 def ask_stream(
     request: AskRequest,
     http_request: Request,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> StreamingResponse:
     """Server-sent-events variant of /ask: ``token`` deltas, then a final ``done``.
 
@@ -1374,6 +1614,16 @@ def ask_stream(
     started = perf_counter()
     settings = get_settings()
     limiter.check(current_user[1], "ask", settings.ask_rate_limit_per_minute)
+    # Per-tenant daily token budget check (pre-flight estimate)
+    token_budget = get_token_budget()
+    if token_budget is not None:
+        estimated = estimate_token_cost(request.question)
+        allowed, current_usage, _ = token_budget.check_and_reserve(str(current_user[1]), estimated)
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Daily token budget exceeded: {current_usage}/{settings.daily_token_budget}",
+            )
     # Everything before the first token (auth, history, rewrite, retrieval) can
     # still surface as a regular HTTP error.
     context = _prepare_ask(request, current_user, settings)
@@ -1384,7 +1634,7 @@ def ask_stream(
     prompt = build_prompt(
         context.standalone_question, context.labeled_chunks, context.labeled_extractions
     )
-    breaker = gemini_breaker()
+    breaker = gemini_generation_breaker()
     breaker.ensure_available()
 
     def stream() -> Iterator[str]:
@@ -1415,6 +1665,10 @@ def ask_stream(
             settings=settings,
             started=started,
         )
+        # Reconcile token budget with actual usage
+        if token_budget is not None:
+            actual_cost = generation.input_tokens + context.embed_input_tokens + generation.output_tokens
+            token_budget.reconcile(str(current_user[1]), actual_cost)
         yield _ask_done_event(full_answer, citations, context.conversation_id)
 
     return _ask_sse_response(stream())
@@ -1427,7 +1681,7 @@ def ask_stream(
 )
 def create_new_conversation(
     request: ConversationCreateRequest,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> ConversationSummary:
     with get_connection() as connection:
         row = create_conversation(connection, current_user[1], request.title)
@@ -1447,7 +1701,7 @@ def _conversation_summary(row: ConversationRow) -> ConversationSummary:
 def conversations(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> ConversationListResponse:
     with get_connection() as connection:
         rows = list_conversations(connection, current_user[1], limit=limit, offset=offset)
@@ -1461,7 +1715,7 @@ def conversations(
 @router.get("/conversations/{conversation_id}", response_model=ConversationDetailResponse)
 def conversation_detail(
     conversation_id: UUID,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> ConversationDetailResponse:
     with get_connection() as connection:
         row = get_conversation(connection, conversation_id, current_user[1])
@@ -1493,7 +1747,7 @@ def conversation_detail(
 @router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_conversation(
     conversation_id: UUID,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> None:
     with get_connection() as connection:
         found = delete_conversation(connection, conversation_id, current_user[1])
@@ -1504,9 +1758,13 @@ def remove_conversation(
 @router.get("/admin/usage", response_model=UsageResponse)
 def usage(
     days: Annotated[int, Query(ge=1, le=90)] = 30,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
 ) -> UsageResponse:
-    """Tenant usage dashboard: totals plus a per-day series (F5)."""
+    """Tenant usage dashboard: totals plus a per-day series (F5).
+
+    Gated to tenant owners only; cost/token/spend data is billing-adjacent
+    and restricted to owners by least-privilege default.
+    """
     with get_connection() as connection:
         documents_count, queries, cost = tenant_usage(connection, current_user[1])
         daily = tenant_usage_daily(connection, current_user[1], days=days)
@@ -1533,7 +1791,7 @@ def usage(
 @router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_document(
     document_id: UUID,
-    current_user: tuple[UUID, UUID] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> None:
     settings = get_settings()
     with get_connection() as connection:
@@ -1545,7 +1803,7 @@ def remove_document(
 
 
 @router.delete("/auth/account", status_code=status.HTTP_204_NO_CONTENT)
-def remove_account(current_user: tuple[UUID, UUID] = Depends(get_current_user)) -> None:
+def remove_account(current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user)) -> None:
     settings = get_settings()
     with get_connection() as connection:
         storage_uris = delete_tenant(connection, current_user[1])
@@ -1553,3 +1811,62 @@ def remove_account(current_user: tuple[UUID, UUID] = Depends(get_current_user)) 
         storage = CloudStorageClient(settings.gcs_bucket, settings.gcp_project_id)
         for storage_uri in storage_uris:
             storage.delete(storage_uri)
+
+
+# Admin console endpoints (platform admin only)
+
+@router.get("/admin/tenants", response_model=AdminTenantListResponse)
+def admin_list_tenants(
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_platform_admin),
+) -> AdminTenantListResponse:
+    """List all tenants with usage stats (platform admin only)."""
+    settings = get_settings()
+    if not settings.admin_console_enabled:
+        raise HTTPException(status_code=403, detail="Admin console is disabled")
+    with get_connection() as connection:
+        rows = list_all_tenants(connection, limit=limit, offset=offset)
+    return AdminTenantListResponse(
+        tenants=[
+            AdminTenantResponse(
+                tenant_id=row.tenant_id,
+                name=row.name,
+                created_at=row.created_at,
+                document_count=row.document_count,
+                query_count=row.query_count,
+                cost_estimate=row.cost_estimate,
+            )
+            for row in rows
+        ],
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/admin/ingestions/failed", response_model=AdminFailedIngestionListResponse)
+def admin_failed_ingestions(
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_platform_admin),
+) -> AdminFailedIngestionListResponse:
+    """List failed ingestions across all tenants (platform admin only)."""
+    settings = get_settings()
+    if not settings.admin_console_enabled:
+        raise HTTPException(status_code=403, detail="Admin console is disabled")
+    with get_connection() as connection:
+        rows = list_all_failed_ingestions(connection, limit=limit, offset=offset)
+    return AdminFailedIngestionListResponse(
+        failed_ingestions=[
+            AdminFailedIngestionResponse(
+                id=row[0],
+                tenant_id=row[1],
+                tenant_name=row[2],
+                filename=row[3],
+                error_message=row[4],
+            )
+            for row in rows
+        ],
+        limit=limit,
+        offset=offset,
+    )
