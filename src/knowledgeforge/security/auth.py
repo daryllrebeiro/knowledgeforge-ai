@@ -1,10 +1,10 @@
+import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID
-import hashlib
-import secrets
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -15,6 +15,10 @@ from knowledgeforge.security.api_keys import verify_api_key
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer = HTTPBearer(auto_error=False)
+
+# Cookie names for token storage
+ACCESS_TOKEN_COOKIE = "kf_access_token"
+REFRESH_TOKEN_COOKIE = "kf_refresh_token"
 
 Role = Literal["owner", "member"]
 INVITATION_TOKEN_BYTES = 32
@@ -37,6 +41,36 @@ def create_access_token(user_id: UUID, tenant_id: UUID, role: Role = "member", i
         settings.jwt_secret_key,
         algorithm=settings.jwt_algorithm,
     )
+
+
+def set_auth_cookies(response: Response, access_token: str, refresh_token: str, settings) -> None:
+    """Set secure, HttpOnly, SameSite=lax cookies for access and refresh tokens."""
+    secure = settings.environment != "development"
+    response.set_cookie(
+        ACCESS_TOKEN_COOKIE,
+        access_token,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        max_age=settings.jwt_expire_minutes * 60,
+        path="/",
+    )
+    response.set_cookie(
+        REFRESH_TOKEN_COOKIE,
+        refresh_token,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        max_age=settings.refresh_token_expire_days * 86400,
+        path="/",
+    )
+
+
+def clear_auth_cookies(response: Response, settings) -> None:
+    """Clear auth cookies on logout."""
+    secure = settings.environment != "development"
+    response.delete_cookie(ACCESS_TOKEN_COOKIE, path="/", secure=secure, samesite="lax")
+    response.delete_cookie(REFRESH_TOKEN_COOKIE, path="/", secure=secure, samesite="lax")
 
 
 def get_user_memberships(user_id: UUID) -> list[tuple[UUID, Role]]:
@@ -126,12 +160,15 @@ def ensure_owner_remaining(tenant_id: UUID, exclude_user_id: UUID | None = None)
 def get_current_user(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+    access_token_cookie: Annotated[str | None, Cookie(alias=ACCESS_TOKEN_COOKIE)] = None,
 ) -> tuple[UUID, UUID, Role, bool]:
-    if credentials is not None:
+    # Try Authorization header first, then cookie
+    token = credentials.credentials if credentials else access_token_cookie
+    if token is not None:
         settings = get_settings()
         try:
             payload = jwt.decode(
-                credentials.credentials,
+                token,
                 settings.jwt_secret_key,
                 algorithms=[settings.jwt_algorithm],
             )

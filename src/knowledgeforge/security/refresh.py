@@ -8,6 +8,8 @@ stolen token can only be detected by someone using it after its owner rotated.
 """
 
 import hashlib
+import json
+import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -16,6 +18,8 @@ from psycopg import Connection
 
 from knowledgeforge.config import get_settings
 
+logger = logging.getLogger("knowledgeforge.auth")
+
 
 class InvalidRefreshToken(Exception):
     """Raised for unknown, expired, or replayed refresh tokens."""
@@ -23,6 +27,11 @@ class InvalidRefreshToken(Exception):
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _audit_log(event: str, **kwargs: object) -> None:
+    """Emit structured audit log for security-relevant events."""
+    logger.warning(json.dumps({"event": event, **kwargs}))
 
 
 def create_refresh_token(
@@ -59,6 +68,7 @@ def rotate_refresh_token(connection: Connection, token: str) -> tuple[UUID, UUID
         )
         row = cursor.fetchone()
         if row is None:
+            _audit_log("refresh_token_rotate_failed", reason="unknown_token")
             raise InvalidRefreshToken("unknown token")
         token_id, family_id, revoked_at, expires_at, user_id, tenant_id = row
         if revoked_at is not None:
@@ -68,8 +78,16 @@ def rotate_refresh_token(connection: Connection, token: str) -> tuple[UUID, UUID
                 "WHERE family_id = %s AND revoked_at IS NULL",
                 (family_id,),
             )
+            _audit_log(
+                "refresh_token_replay_detected",
+                family_id=str(family_id),
+                user_id=str(user_id),
+                tenant_id=str(tenant_id),
+                action="family_revoked",
+            )
             raise InvalidRefreshToken("token replay detected; family revoked")
         if datetime.now(UTC) >= expires_at:
+            _audit_log("refresh_token_rotate_failed", reason="token_expired", user_id=str(user_id))
             raise InvalidRefreshToken("token expired")
         cursor.execute(
             "UPDATE refresh_tokens SET revoked_at = now() WHERE id = %s AND revoked_at IS NULL",

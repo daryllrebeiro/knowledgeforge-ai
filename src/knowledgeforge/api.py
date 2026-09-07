@@ -9,7 +9,17 @@ from typing import Annotated, BinaryIO, NoReturn
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 import psycopg
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from google import genai
 from google.genai import types
@@ -44,10 +54,10 @@ from knowledgeforge.ingestion.dedup import content_hash, decide_dedup
 from knowledgeforge.ingestion.embed import embed_texts, embed_texts_local
 from knowledgeforge.ingestion.embed_cache import embed_texts_cached
 from knowledgeforge.ingestion.extract import extract_pdf
-from knowledgeforge.ingestion.extract_docx import extract_docx
-from knowledgeforge.ingestion.extract_pptx import extract_pptx, PPTXExtractionError
-from knowledgeforge.ingestion.extract_csv import extract_csv, CSVExtractionError
+from knowledgeforge.ingestion.extract_csv import CSVExtractionError, extract_csv
+from knowledgeforge.ingestion.extract_docx import DOCXExtractionError, extract_docx
 from knowledgeforge.ingestion.extract_markdown import extract_markdown
+from knowledgeforge.ingestion.extract_pptx import PPTXExtractionError, extract_pptx
 from knowledgeforge.ingestion.extract_text import extract_html, extract_text
 from knowledgeforge.ingestion.store import (
     count_documents,
@@ -74,23 +84,35 @@ from knowledgeforge.ingestion.store import (
 from knowledgeforge.limits import RedisTokenBucketLimiter, TokenBucketLimiter
 from knowledgeforge.limits import limiter as default_limiter
 from knowledgeforge.observability import request_id
-from knowledgeforge.reliability import CircuitBreaker, CircuitOpenError, build_circuit_breaker, make_redis_key
+from knowledgeforge.reliability import (
+    CircuitBreaker,
+    CircuitOpenError,
+    build_circuit_breaker,
+    make_redis_key,
+)
 from knowledgeforge.retrieval.retrieve import retrieve_chunks
 from knowledgeforge.security.api_keys import create_api_key, list_api_keys, revoke_api_key
 from knowledgeforge.security.auth import (
-    create_access_token,
-    get_current_user,
-    get_user_role_for_tenant,
-    get_user_platform_admin,
-    hash_password,
-    verify_password,
     accept_invitation,
+    clear_auth_cookies,
+    create_access_token,
     create_invitation,
+    ensure_owner_remaining,
+    get_current_user,
+    get_user_platform_admin,
+    get_user_role_for_tenant,
+    hash_password,
     require_owner,
     require_platform_admin,
-    ensure_owner_remaining,
+    set_auth_cookies,
+    verify_password,
 )
-from knowledgeforge.security.budget import BudgetExceeded, estimate_token_cost, get_token_budget, get_extraction_budget
+from knowledgeforge.security.budget import (
+    estimate_token_cost,
+    get_extraction_budget,
+    get_platform_token_budget,
+    get_token_budget,
+)
 from knowledgeforge.security.refresh import (
     InvalidRefreshToken,
     create_refresh_token,
@@ -403,8 +425,11 @@ class ApiKeyListedResponse(BaseModel):
 
 
 @router.post("/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-def register(request: RegisterRequest, http_request: Request) -> TokenResponse:
+def register(request: RegisterRequest, http_request: Request, response: Response) -> TokenResponse:
     settings = get_settings()
+    # Global registration rate limit (prevents tenant farming)
+    limiter.check("global", "register", settings.registration_rate_limit_per_hour, window_seconds=3600)
+    # Per-IP rate limit
     limiter.check(
         _client_subject(http_request, "register"),
         "auth",
@@ -449,13 +474,15 @@ def register(request: RegisterRequest, http_request: Request) -> TokenResponse:
         ) from exc
     with get_connection() as connection:
         refresh_token = create_refresh_token(connection, user_id)
+    access_token = create_access_token(user_id, tenant_id, "owner", False)
+    set_auth_cookies(response, access_token, refresh_token, settings)
     return TokenResponse(
-        access_token=create_access_token(user_id, tenant_id, "owner", False), refresh_token=refresh_token
+        access_token=access_token, refresh_token=refresh_token
     )
 
 
 @router.post("/auth/login", response_model=TokenResponse)
-def login(request: LoginRequest, http_request: Request) -> TokenResponse:
+def login(request: LoginRequest, http_request: Request, response: Response) -> TokenResponse:
     settings = get_settings()
     limiter.check(
         _client_subject(http_request, "login"),
@@ -477,13 +504,15 @@ def login(request: LoginRequest, http_request: Request) -> TokenResponse:
     role = get_user_role_for_tenant(user_id, tenant_id) or "member"
     with get_connection() as connection:
         refresh_token = create_refresh_token(connection, user_id)
+    access_token = create_access_token(user_id, tenant_id, role, is_platform_admin)
+    set_auth_cookies(response, access_token, refresh_token, settings)
     return TokenResponse(
-        access_token=create_access_token(user_id, tenant_id, role, is_platform_admin), refresh_token=refresh_token
+        access_token=access_token, refresh_token=refresh_token
     )
 
 
 @router.post("/auth/refresh", response_model=TokenResponse)
-def refresh(request: RefreshRequest, http_request: Request) -> TokenResponse:
+def refresh(request: RefreshRequest, http_request: Request, response: Response) -> TokenResponse:
     """Rotate a refresh token: the old one dies, a new one is returned.
 
     Presenting an already-rotated token is treated as replay — the whole token
@@ -503,8 +532,10 @@ def refresh(request: RefreshRequest, http_request: Request) -> TokenResponse:
     # Re-fetch current role and platform_admin status at refresh time
     role = get_user_role_for_tenant(user_id, tenant_id) or "member"
     is_platform_admin = get_user_platform_admin(user_id)
+    access_token = create_access_token(user_id, tenant_id, role, is_platform_admin)
+    set_auth_cookies(response, access_token, new_refresh, settings)
     return TokenResponse(
-        access_token=create_access_token(user_id, tenant_id, role, is_platform_admin), refresh_token=new_refresh
+        access_token=access_token, refresh_token=new_refresh
     )
 
 
@@ -512,6 +543,7 @@ def refresh(request: RefreshRequest, http_request: Request) -> TokenResponse:
 def logout(
     request: RefreshRequest,
     http_request: Request,
+    response: Response,
     current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> None:
     """Revoke the refresh-token family behind the presented token."""
@@ -521,6 +553,51 @@ def logout(
     )
     with get_connection() as connection:
         revoke_refresh_family(connection, request.refresh_token)
+    clear_auth_cookies(response, settings)
+
+
+@router.get("/.well-known/jwks.json", tags=["auth"])
+def jwks() -> dict:
+    """JSON Web Key Set endpoint for RS256 public key discovery.
+
+    Returns the public key(s) used to verify JWT signatures when using RS256.
+    """
+    settings = get_settings()
+    if settings.jwt_algorithm.upper() != "RS256" or not settings.jwt_public_key:
+        raise HTTPException(status_code=404, detail="JWKS not available (not using RS256)")
+    # Extract key parameters from PEM
+    import base64
+    import re
+    # Parse PEM to extract modulus and exponent
+    pem = settings.jwt_public_key.strip()
+    # Remove PEM headers
+    b64 = pem.replace("-----BEGIN PUBLIC KEY-----", "").replace("-----END PUBLIC KEY-----", "").replace("\n", "").strip()
+    der = base64.b64decode(b64)
+    # Simple parsing for RSA public key (SubjectPublicKeyInfo)
+    # This is a simplified approach; in production use cryptography library
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    public_key = serialization.load_pem_public_key(pem.encode())
+    if not isinstance(public_key, rsa.RSAPublicKey):
+        raise HTTPException(status_code=500, detail="Unsupported key type")
+    numbers = public_key.public_numbers()
+    # JWK format requires base64url encoding without padding
+    def b64url_encode(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).decode().rstrip("=")
+    n = b64url_encode(numbers.n.to_bytes((numbers.n.bit_length() + 7) // 8, "big"))
+    e = b64url_encode(numbers.e.to_bytes((numbers.e.bit_length() + 7) // 8, "big"))
+    return {
+        "keys": [
+            {
+                "kty": "RSA",
+                "use": "sig",
+                "kid": "kf-rsa-1",
+                "alg": "RS256",
+                "n": n,
+                "e": e,
+            }
+        ]
+    }
 
 
 @router.post(
@@ -573,6 +650,127 @@ def accept_invitation_endpoint(
     return InvitationAcceptResponse(
         invitation_id=invitation_id, tenant_id=tenant_id, role=role
     )
+
+
+class MemberResponse(BaseModel):
+    user_id: UUID
+    email: str
+    role: str
+    created_at: str
+
+
+class MemberListResponse(BaseModel):
+    members: list[MemberResponse]
+
+
+@router.get("/members", response_model=MemberListResponse)
+def list_members(
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> MemberListResponse:
+    """List all members of the current user's tenant (owner only)."""
+    _, tenant_id, _, _ = current_user
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT u.id, u.email, tm.role, tm.created_at
+                FROM tenant_memberships tm
+                JOIN users u ON u.id = tm.user_id
+                WHERE tm.tenant_id = %s
+                ORDER BY tm.created_at
+                """,
+                (tenant_id,),
+            )
+            rows = cursor.fetchall()
+    return MemberListResponse(
+        members=[
+            MemberResponse(
+                user_id=UUID(str(row[0])),
+                email=row[1],
+                role=row[2],
+                created_at=str(row[3]),
+            )
+            for row in rows
+        ]
+    )
+
+
+class MemberRoleUpdateRequest(BaseModel):
+    role: str = Field(pattern="^(owner|member)$")
+
+
+@router.patch("/members/{user_id}", response_model=MemberResponse)
+def update_member_role(
+    user_id: UUID,
+    request: MemberRoleUpdateRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> MemberResponse:
+    """Change a member's role (owner only).
+
+    Uses advisory lock to prevent TOCTOU races on last-owner removal.
+    """
+    requester_id, tenant_id, _, _ = current_user
+    if user_id == requester_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot change your own role",
+        )
+    # Ensure we don't remove the last owner (advisory lock + check)
+    with get_connection() as connection:
+        with connection.transaction():
+            ensure_owner_remaining(tenant_id, exclude_user_id=user_id if request.role == "member" else None)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE tenant_memberships SET role = %s
+                    WHERE tenant_id = %s AND user_id = %s
+                    RETURNING user_id
+                    """,
+                    (request.role, tenant_id, user_id),
+                )
+                if cursor.fetchone() is None:
+                    raise HTTPException(status_code=404, detail="Member not found in this tenant")
+                cursor.execute(
+                    "SELECT u.email, tm.role, tm.created_at FROM users u JOIN tenant_memberships tm ON tm.user_id = u.id WHERE tm.tenant_id = %s AND tm.user_id = %s",
+                    (tenant_id, user_id),
+                )
+                row = cursor.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+    return MemberResponse(
+        user_id=user_id,
+        email=row[0],
+        role=row[1],
+        created_at=str(row[2]),
+    )
+
+
+@router.delete("/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_member(
+    user_id: UUID,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> None:
+    """Remove a member from the tenant (owner only).
+
+    Uses advisory lock to prevent TOCTOU races on last-owner removal.
+    """
+    requester_id, tenant_id, _, _ = current_user
+    if user_id == requester_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot remove yourself from the tenant",
+        )
+    # Ensure we don't remove the last owner (advisory lock + check)
+    with get_connection() as connection:
+        with connection.transaction():
+            ensure_owner_remaining(tenant_id, exclude_user_id=user_id)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "DELETE FROM tenant_memberships WHERE tenant_id = %s AND user_id = %s",
+                    (tenant_id, user_id),
+                )
+                if cursor.rowcount == 0:
+                    raise HTTPException(status_code=404, detail="Member not found in this tenant")
 
 
 @router.post("/api-keys", response_model=ApiKeyCreatedResponse, status_code=status.HTTP_201_CREATED)
@@ -899,7 +1097,10 @@ def _ingest_upload(
         if content_type == "application/pdf" or suffix == "pdf":
             pages = extract_pdf(BytesIO(content))
         elif suffix == "docx":
-            pages = extract_docx(BytesIO(content))
+            try:
+                pages = extract_docx(BytesIO(content))
+            except DOCXExtractionError as exc:
+                raise HTTPException(status_code=413, detail=f"DOCX guard rejection: {exc}") from exc
         elif suffix == "pptx":
             try:
                 pages = extract_pptx(BytesIO(content))
@@ -1598,6 +1799,11 @@ def ask(
     limiter.check(current_user[1], "ask", settings.ask_rate_limit_per_minute)
     # Per-tenant daily token budget check (pre-flight estimate)
     token_budget = get_token_budget()
+    # Platform-wide daily token budget check (hard ceiling)
+    platform_budget = get_platform_token_budget()
+    reserved = False
+    platform_reserved = False
+    estimated = 0
     if token_budget is not None:
         estimated = estimate_token_cost(request.question)
         allowed, current_usage, _ = token_budget.check_and_reserve(str(current_user[1]), estimated)
@@ -1606,49 +1812,79 @@ def ask(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail=f"Daily token budget exceeded: {current_usage}/{settings.daily_token_budget}",
             )
-    context = _prepare_ask(request, current_user, settings)
-    if settings.local_generation:
-        answer_text = local_answer(
-            context.standalone_question, context.labeled_chunks, context.labeled_extractions
-        )
-        parsed = parse_citations(answer_text)
-        input_tokens = context.embed_input_tokens
-        output_tokens = 0
-    else:
-        try:
-            answer = gemini_generation_breaker().call(
-                lambda: generate_answer(
-                    GeminiTextGenerator(_gemini_client(), settings.gemini_model),
-                    context.standalone_question,
-                    context.labeled_chunks,
-                    context.labeled_extractions,
-                )
+        reserved = True
+    if platform_budget is not None:
+        # Use same estimate for platform budget
+        if estimated == 0:
+            estimated = estimate_token_cost(request.question)
+        allowed, current_usage, _ = platform_budget.check_and_reserve("platform", estimated)
+        if not allowed:
+            # Release tenant reservation if platform budget exceeded
+            if token_budget is not None and reserved:
+                token_budget.release_reservation(str(current_user[1]), estimated)
+            import logging
+            logging.getLogger("knowledgeforge.budget").warning(
+                "Platform daily token budget exceeded: %d/%d", current_usage, settings.platform_daily_token_budget
             )
-        except CircuitOpenError as exc:
-            _raise_provider_unavailable(exc)
-        answer_text = answer.answer
-        parsed = answer.citations
-        input_tokens = answer.input_tokens + context.embed_input_tokens
-        output_tokens = answer.output_tokens
-    citations = _citations_for(parsed, context.document_numbers)
-    _record_ask(
-        http_request,
-        current_user,
-        context,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        answer=answer_text,
-        citations=citations,
-        settings=settings,
-        started=started,
-    )
-    # Reconcile token budget with actual usage
-    if token_budget is not None:
-        actual_cost = input_tokens + output_tokens
-        token_budget.reconcile(str(current_user[1]), actual_cost)
-    return AskResponse(
-        answer=answer_text, citations=citations, conversation_id=context.conversation_id
-    )
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Platform daily token budget exceeded: {current_usage}/{settings.platform_daily_token_budget}",
+            )
+        platform_reserved = True
+    context = _prepare_ask(request, current_user, settings)
+    try:
+        if settings.local_generation:
+            answer_text = local_answer(
+                context.standalone_question, context.labeled_chunks, context.labeled_extractions
+            )
+            parsed = parse_citations(answer_text)
+            input_tokens = context.embed_input_tokens
+            output_tokens = 0
+        else:
+            try:
+                answer = gemini_generation_breaker().call(
+                    lambda: generate_answer(
+                        GeminiTextGenerator(_gemini_client(), settings.gemini_model),
+                        context.standalone_question,
+                        context.labeled_chunks,
+                        context.labeled_extractions,
+                    )
+                )
+            except CircuitOpenError as exc:
+                _raise_provider_unavailable(exc)
+            answer_text = answer.answer
+            parsed = answer.citations
+            input_tokens = answer.input_tokens + context.embed_input_tokens
+            output_tokens = answer.output_tokens
+        citations = _citations_for(parsed, context.document_numbers)
+        _record_ask(
+            http_request,
+            current_user,
+            context,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            answer=answer_text,
+            citations=citations,
+            settings=settings,
+            started=started,
+        )
+        # Reconcile token budget with actual usage on success
+        if token_budget is not None and reserved:
+            actual_cost = input_tokens + output_tokens
+            token_budget.reconcile(str(current_user[1]), actual_cost)
+        if platform_budget is not None and platform_reserved:
+            actual_cost = input_tokens + output_tokens
+            platform_budget.reconcile("platform", actual_cost)
+        return AskResponse(
+            answer=answer_text, citations=citations, conversation_id=context.conversation_id
+        )
+    except Exception:
+        # Release reservations on any failure so failed calls don't consume budget
+        if token_budget is not None and reserved:
+            token_budget.release_reservation(str(current_user[1]), estimated)
+        if platform_budget is not None and platform_reserved:
+            platform_budget.release_reservation("platform", estimated)
+        raise
 
 
 @router.post("/ask/stream")
@@ -1669,6 +1905,11 @@ def ask_stream(
     limiter.check(current_user[1], "ask", settings.ask_rate_limit_per_minute)
     # Per-tenant daily token budget check (pre-flight estimate)
     token_budget = get_token_budget()
+    # Platform-wide daily token budget check (hard ceiling)
+    platform_budget = get_platform_token_budget()
+    reserved = False
+    platform_reserved = False
+    estimated = 0
     if token_budget is not None:
         estimated = estimate_token_cost(request.question)
         allowed, current_usage, _ = token_budget.check_and_reserve(str(current_user[1]), estimated)
@@ -1677,6 +1918,23 @@ def ask_stream(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail=f"Daily token budget exceeded: {current_usage}/{settings.daily_token_budget}",
             )
+        reserved = True
+    if platform_budget is not None:
+        if estimated == 0:
+            estimated = estimate_token_cost(request.question)
+        allowed, current_usage, _ = platform_budget.check_and_reserve("platform", estimated)
+        if not allowed:
+            if token_budget is not None and reserved:
+                token_budget.release_reservation(str(current_user[1]), estimated)
+            import logging
+            logging.getLogger("knowledgeforge.budget").warning(
+                "Platform daily token budget exceeded: %d/%d", current_usage, settings.platform_daily_token_budget
+            )
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Platform daily token budget exceeded: {current_usage}/{settings.platform_daily_token_budget}",
+            )
+        platform_reserved = True
     # Everything before the first token (auth, history, rewrite, retrieval) can
     # still surface as a regular HTTP error.
     context = _prepare_ask(request, current_user, settings)
@@ -1693,6 +1951,7 @@ def ask_stream(
     def stream() -> Iterator[str]:
         generation = GeminiTextStream(_gemini_client(), settings.gemini_model, prompt)
         parts: list[str] = []
+        stream_succeeded = False
         try:
             for delta in generation:
                 parts.append(delta)
@@ -1700,11 +1959,26 @@ def ask_stream(
             if not parts:
                 raise RuntimeError("Gemini returned an empty response")
             breaker.record_success()
+            stream_succeeded = True
         except Exception:
             breaker.record_failure()
             logger.error("Streaming answer generation failed", exc_info=True)
             yield _sse_event("error", {"detail": "Answer generation failed"})
             return
+        finally:
+            # Handle budget reconciliation/release after stream completes or fails
+            if token_budget is not None and reserved:
+                if stream_succeeded:
+                    actual_cost = generation.input_tokens + context.embed_input_tokens + generation.output_tokens
+                    token_budget.reconcile(str(current_user[1]), actual_cost)
+                else:
+                    token_budget.release_reservation(str(current_user[1]), estimated)
+            if platform_budget is not None and platform_reserved:
+                if stream_succeeded:
+                    actual_cost = generation.input_tokens + context.embed_input_tokens + generation.output_tokens
+                    platform_budget.reconcile("platform", actual_cost)
+                else:
+                    platform_budget.release_reservation("platform", estimated)
         full_answer = "".join(parts).strip()
         citations = _citations_for(parse_citations(full_answer), context.document_numbers)
         _record_ask(
@@ -1718,10 +1992,6 @@ def ask_stream(
             settings=settings,
             started=started,
         )
-        # Reconcile token budget with actual usage
-        if token_budget is not None:
-            actual_cost = generation.input_tokens + context.embed_input_tokens + generation.output_tokens
-            token_budget.reconcile(str(current_user[1]), actual_cost)
         yield _ask_done_event(full_answer, citations, context.conversation_id)
 
     return _ask_sse_response(stream())
