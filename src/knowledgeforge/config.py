@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     hybrid_lexical_weight: float = 0.15
     jwt_secret_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
+    # RS256 support (optional; if set, overrides jwt_secret_key)
+    jwt_private_key: str = ""  # PEM-encoded RSA private key
+    jwt_public_key: str = ""   # PEM-encoded RSA public key
     jwt_expire_minutes: int = 60
     refresh_token_expire_days: int = 30
     gcp_project_id: str = ""
@@ -50,6 +53,8 @@ class Settings(BaseSettings):
     ask_rate_limit_per_minute: int = 60
     document_rate_limit_per_minute: int = 10
     auth_rate_limit_per_minute: int = 10
+    # Global registration rate limit (per hour) to prevent tenant farming
+    registration_rate_limit_per_hour: int = 50
     # Most recent messages fed to follow-up question rewriting (both roles).
     conversation_history_turns: int = 10
     max_documents_per_tenant: int = 100
@@ -82,29 +87,41 @@ class Settings(BaseSettings):
     # Per-tenant daily budget limits (enforced when Redis is configured).
     daily_token_budget: int = 1_000_000
     daily_extraction_budget: int = 1000
+    # Platform-wide daily token budget ceiling (enforced when Redis is configured).
+    # This is a hard limit on total platform spend, independent of per-tenant budgets.
+    platform_daily_token_budget: int = 10_000_000
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 
     def validate_runtime(self) -> None:
-        """Fail closed outside development rather than running on unsafe defaults."""
+        """Fail closed on unsafe defaults regardless of environment."""
         problems: list[str] = []
-        if self.environment != "development":
-            if self.jwt_secret_key in {"", "change-me-in-production"}:
-                problems.append("JWT_SECRET_KEY must be set outside development")
+        # Check if using RS256 (asymmetric keys)
+        using_rs256 = self.jwt_algorithm.upper() == "RS256" and self.jwt_private_key and self.jwt_public_key
+        # If not using RS256, enforce HS256 secret strength
+        if not using_rs256:
+            if self.jwt_secret_key in {"", "change-me-in-production", "REPLACE_WITH_32_CHAR_MIN_SECRET_OR_STARTUP_WILL_FAIL"}:
+                problems.append("JWT_SECRET_KEY must be set (cannot use default placeholder)")
             elif len(self.jwt_secret_key) < 32:
                 problems.append("JWT_SECRET_KEY must be at least 32 characters")
-            if self.local_extraction:
-                # LOCAL_EXTRACTION is deterministic fixture output; it must
-                # never silently run in a real deployment.
-                problems.append("LOCAL_EXTRACTION may only be used in development")
-            if not (self.local_embeddings and self.local_generation) and self.gemini_api_key in {
-                "",
-                "replace-me",
-            }:
-                problems.append(
-                    "GEMINI_API_KEY must be configured when LOCAL_EMBEDDINGS or "
-                    "LOCAL_GENERATION is disabled"
-                )
+        else:
+            # Validate RS256 keys are present and non-empty
+            if not self.jwt_private_key.strip():
+                problems.append("JWT_PRIVATE_KEY must be set when using RS256")
+            if not self.jwt_public_key.strip():
+                problems.append("JWT_PUBLIC_KEY must be set when using RS256")
+        if self.local_extraction:
+            # LOCAL_EXTRACTION is deterministic fixture output; it must
+            # never silently run in a real deployment.
+            problems.append("LOCAL_EXTRACTION may only be used in development")
+        if not (self.local_embeddings and self.local_generation) and self.gemini_api_key in {
+            "",
+            "replace-me",
+        }:
+            problems.append(
+                "GEMINI_API_KEY must be configured when LOCAL_EMBEDDINGS or "
+                "LOCAL_GENERATION is disabled"
+            )
         if problems:
             raise RuntimeError("Refusing to start: " + "; ".join(problems))
 
