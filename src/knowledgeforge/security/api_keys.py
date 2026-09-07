@@ -54,8 +54,11 @@ def verify_api_key(connection: Connection, presented: str) -> tuple[UUID, UUID] 
         row = cursor.fetchone()
         if row is None:
             return None
+        # Throttle last_used_at updates to at most once per hour to avoid
+        # write amplification under high request volume.
         cursor.execute(
-            "UPDATE api_keys SET last_used_at = now() WHERE key_hash = %s",
+            "UPDATE api_keys SET last_used_at = now() "
+            "WHERE key_hash = %s AND (last_used_at IS NULL OR last_used_at < now() - interval '1 hour')",
             (_hash_key(presented),),
         )
     return UUID(str(row[0])), UUID(str(row[1]))
