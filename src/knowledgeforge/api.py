@@ -763,6 +763,50 @@ def _read_upload(stream: BinaryIO, request: Request | None, *, max_bytes: int) -
     return b"".join(parts)
 
 
+# Magic byte signatures for file type validation (Fix R9 - defense in depth)
+_MAGIC_BYTES = {
+    "pdf": b"%PDF",
+    "pptx": b"PK\x03\x04",  # ZIP-based (also DOCX)
+    "docx": b"PK\x03\x04",  # ZIP-based
+    "png": b"\x89PNG\r\n\x1a\n",
+    "jpg": b"\xff\xd8\xff",
+    "jpeg": b"\xff\xd8\xff",
+    "tif": b"II*\x00",
+    "tiff": b"MM\x00*",
+}
+
+
+def _detect_file_type(content: bytes, filename: str) -> str | None:
+    """Detect actual file type from magic bytes (first 8 bytes).
+
+    Returns the detected type or None if unknown/mismatched.
+    This is a defense-in-depth measure; the primary routing is still by extension.
+    """
+    if len(content) < 8:
+        return None
+
+    header = content[:8]
+    for ftype, magic in _MAGIC_BYTES.items():
+        if header.startswith(magic):
+            # For ZIP-based formats (PPTX, DOCX), we can't distinguish without
+            # deeper inspection, so accept either if extension matches one of them
+            if ftype in {"pptx", "docx"}:
+                suffix = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+                if suffix in {"pptx", "docx"}:
+                    return suffix  # trust the extension for zip-based
+                return None
+            return ftype
+    # For text-based formats (CSV, TXT, MD, HTML), check if valid UTF-8
+    try:
+        content[:1024].decode("utf-8")
+        suffix = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+        if suffix in {"csv", "txt", "text", "md", "markdown", "html", "htm"}:
+            return suffix
+    except UnicodeDecodeError:
+        pass
+    return None
+
+
 def _ingest_upload(
     content: bytes,
     filename: str,
@@ -800,6 +844,15 @@ def _ingest_upload(
                 status_code=415,
                 detail="Supported file types are PDF, DOCX, PPTX, CSV, Markdown, TXT, HTML, "
                 "and images (PNG, JPEG, TIFF)",
+            )
+        # Defense-in-depth: verify file content matches extension via magic bytes
+        detected = _detect_file_type(content, filename)
+        if detected is not None and detected != doc_type and not (
+            doc_type in {"pptx", "docx"} and detected in {"pptx", "docx"}
+        ):
+            raise HTTPException(
+                status_code=415,
+                detail=f"File content does not match extension: detected {detected}, expected {doc_type}",
             )
         if doc_type == "image" and not settings.async_ingestion:
             # OCR runs in the ingestion worker, which only exists for the async
