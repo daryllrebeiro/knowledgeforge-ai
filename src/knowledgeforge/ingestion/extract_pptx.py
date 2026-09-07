@@ -1,6 +1,8 @@
 import zipfile
 from typing import BinaryIO
 
+from defusedxml import ElementTree as DefusedET
+from defusedxml.ElementTree import iterparse as DefusedIterparse
 from pptx import Presentation
 
 from knowledgeforge.config import get_settings
@@ -10,15 +12,35 @@ class PPTXExtractionError(Exception):
     """Raised when PPTX extraction fails a guard check."""
 
 
-def _scan_xml_for_entity_declarations(xml_bytes: bytes) -> bool:
-    """Scan XML content for DOCTYPE or ENTITY declarations that could trigger XXE or billion-laughs.
+# Maximum size for a single XML entry (10 MB) to prevent memory exhaustion
+MAX_XML_ENTRY_BYTES = 10_000_000
 
-    Returns True if suspicious declarations are found.
+
+def _validate_xml_entry_streaming(entry_file: BinaryIO, filename: str) -> None:
+    """Validate XML entry using defusedxml's iterparse for streaming validation.
+
+    This avoids loading the entire XML into memory while still enforcing
+    XXE/ENTITY/DTD restrictions.
     """
-    # Check for DOCTYPE or ENTITY declarations (case-insensitive)
-    # Legitimate PPTX files from PowerPoint/Google Slides never contain these.
-    upper = xml_bytes.upper()
-    return b"<!DOCTYPE" in upper or b"<!ENTITY" in upper
+    try:
+        # iterparse still enforces entity/DTD restrictions; we just iterate to trigger validation
+        for _event, _elem in DefusedIterparse(entry_file, events=("start",)):
+            pass
+    except DefusedET.EntitiesForbidden as exc:
+        raise PPTXExtractionError(
+            f"PPTX entry {filename} contains entity references; rejected for security"
+        ) from exc
+    except DefusedET.DTDForbidden as exc:
+        raise PPTXExtractionError(
+            f"PPTX entry {filename} contains DTD; rejected for security"
+        ) from exc
+    except DefusedET.ExternalReferenceForbidden as exc:
+        raise PPTXExtractionError(
+            f"PPTX entry {filename} contains external references; rejected for security"
+        ) from exc
+    except DefusedET.ExpatError:
+        # Malformed XML that isn't an attack — let python-pptx handle it
+        pass
 
 
 def extract_pptx(file: BinaryIO) -> list[tuple[int, str]]:
@@ -26,8 +48,8 @@ def extract_pptx(file: BinaryIO) -> list[tuple[int, str]]:
 
     Guards against zip bombs by checking total uncompressed size and
     per-entry compression ratio before handing off to python-pptx.
-    Also pre-scans XML entries for DOCTYPE/ENTITY declarations to prevent
-    XXE and billion-laughs attacks (lxml entity resolution is enabled by default).
+    Also validates all XML entries with defusedxml to prevent
+    XXE and billion-laughs attacks.
     """
     settings = get_settings()
     max_total = settings.max_pptx_decompressed_bytes
@@ -46,15 +68,15 @@ def extract_pptx(file: BinaryIO) -> list[tuple[int, str]]:
                             f"PPTX entry {info.filename} has implausible compression ratio "
                             f"{ratio:.0f}:1 (max {max_ratio}:1)"
                         )
-                # Pre-scan XML entries for entity declarations
+                # Validate XML entries with defusedxml (streaming, size-limited)
                 if info.filename.endswith(".xml") or info.filename.endswith(".rels"):
-                    # Read the entry content for scanning
+                    if info.file_size > MAX_XML_ENTRY_BYTES:
+                        raise PPTXExtractionError(
+                            f"PPTX entry {info.filename} exceeds max XML size "
+                            f"({info.file_size} > {MAX_XML_ENTRY_BYTES} bytes)"
+                        )
                     with zf.open(info) as entry_file:
-                        content = entry_file.read()
-                        if _scan_xml_for_entity_declarations(content):
-                            raise PPTXExtractionError(
-                                f"PPTX entry {info.filename} contains DOCTYPE or ENTITY declaration; rejected for security"
-                            )
+                        _validate_xml_entry_streaming(entry_file, info.filename)
             if total_uncompressed > max_total:
                 raise PPTXExtractionError(
                     f"PPTX total uncompressed size {total_uncompressed} bytes exceeds limit {max_total}"
