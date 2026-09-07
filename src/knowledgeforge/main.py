@@ -41,17 +41,18 @@ app.middleware("http")(log_request)
 app.include_router(api_module.router)
 app.include_router(api_module.router, prefix="/v1")
 
-allowed_origins = [
-    origin.strip() for origin in settings.cors_allowed_origins.split(",") if origin.strip()
-]
-if allowed_origins:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=allowed_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
-    )
+# CORS: only enable when explicitly configured with non-empty origins
+raw_origins = settings.cors_allowed_origins.strip()
+if raw_origins:
+    allowed_origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    if allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=allowed_origins,
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+        )
 
 
 @app.get("/health", tags=["system"])
