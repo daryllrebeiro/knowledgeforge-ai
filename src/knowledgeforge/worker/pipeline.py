@@ -10,10 +10,10 @@ from knowledgeforge.ingestion.chunk import chunk_pages
 from knowledgeforge.ingestion.embed import embed_texts_local
 from knowledgeforge.ingestion.embed_cache import embed_texts_cached
 from knowledgeforge.ingestion.extract import extract_pdf
-from knowledgeforge.ingestion.extract_docx import extract_docx
+from knowledgeforge.ingestion.extract_csv import CSVExtractionError, extract_csv
+from knowledgeforge.ingestion.extract_docx import DOCXExtractionError, extract_docx
 from knowledgeforge.ingestion.extract_markdown import extract_markdown
-from knowledgeforge.ingestion.extract_pptx import extract_pptx, PPTXExtractionError
-from knowledgeforge.ingestion.extract_csv import extract_csv, CSVExtractionError
+from knowledgeforge.ingestion.extract_pptx import PPTXExtractionError, extract_pptx
 from knowledgeforge.ingestion.extract_text import extract_html, extract_text
 from knowledgeforge.ingestion.jobs import IngestionJob
 from knowledgeforge.ingestion.store import record_request_log, store_chunks
@@ -62,7 +62,10 @@ def process_ingestion_job(job: IngestionJob, settings: Settings) -> None:
     elif is_image_upload(filename):
         pages = _ocr_pages(content, filename, settings, job.tenant_id)
     elif filename.endswith(".docx"):
-        pages = extract_docx(BytesIO(content))
+        try:
+            pages = extract_docx(BytesIO(content))
+        except DOCXExtractionError as exc:
+            raise ValueError(f"DOCX guard rejection: {exc}") from exc
     elif filename.endswith(".pptx"):
         try:
             pages = extract_pptx(BytesIO(content))

@@ -6,7 +6,6 @@ from time import monotonic
 
 from fastapi import HTTPException, status
 
-from knowledgeforge.config import get_settings
 from knowledgeforge.reliability import make_redis_key
 
 logger = logging.getLogger("knowledgeforge.limits")
