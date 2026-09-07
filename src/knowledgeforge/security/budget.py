@@ -4,7 +4,6 @@ Provides atomic daily budget tracking for token usage (/ask) and extraction call
 """
 
 import time
-from typing import Optional
 
 from knowledgeforge.config import get_settings
 from knowledgeforge.reliability import make_redis_key
@@ -33,6 +32,7 @@ class RedisBudgetCounter:
     local window_seconds = tonumber(ARGV[2])
     local increment = tonumber(ARGV[3])
     local now = tonumber(ARGV[4])
+    local reservation_ttl = tonumber(ARGV[5])
 
     local current = tonumber(redis.call('GET', key) or '0')
     local ttl = redis.call('TTL', key)
@@ -48,8 +48,11 @@ class RedisBudgetCounter:
     end
 
     redis.call('INCRBY', key, increment)
-    redis.call('EXPIRE', key, ttl)
-    return {1, new_total, ttl}
+    -- Use the shorter of reservation_ttl or window_seconds as TTL
+    -- This ensures reservations self-expire quickly if not reconciled
+    local effective_ttl = math.min(reservation_ttl, ttl)
+    redis.call('EXPIRE', key, effective_ttl)
+    return {1, new_total, effective_ttl}
     """
 
     _SCRIPT_GET = """
@@ -74,11 +77,30 @@ class RedisBudgetCounter:
     return {1, actual_used}
     """
 
-    def __init__(self, client: object, budget_type: str, daily_limit: int, window_seconds: int = 86400):
+    _SCRIPT_RELEASE = """
+    local key = KEYS[1]
+    local decrement = tonumber(ARGV[1])
+    local reservation_ttl = tonumber(ARGV[2])
+    local current = tonumber(redis.call('GET', key) or '0')
+    local ttl = redis.call('TTL', key)
+    if ttl < 0 then
+        return {0}
+    end
+    local new_total = current - decrement
+    if new_total < 0 then
+        new_total = 0
+    end
+    redis.call('SET', key, new_total)
+    redis.call('EXPIRE', key, reservation_ttl)
+    return {1, new_total}
+    """
+
+    def __init__(self, client: object, budget_type: str, daily_limit: int, window_seconds: int = 86400, reservation_ttl: int = 300):
         self._client = client
         self._budget_type = budget_type
         self._daily_limit = daily_limit
         self._window_seconds = window_seconds
+        self._reservation_ttl = reservation_ttl  # TTL for unreconciled reservations (default 5 min)
 
     def _key(self, tenant_id: str) -> str:
         return make_redis_key(f"budget:{self._budget_type}:{tenant_id}")
@@ -88,6 +110,7 @@ class RedisBudgetCounter:
 
         Returns (allowed, current_usage, ttl_seconds).
         If allowed is False, the reservation was not made.
+        Raises HTTPException if Redis is unavailable (fail closed for budget safety).
         """
         try:
             result = self._client.eval(  # type: ignore[attr-defined]
@@ -98,22 +121,52 @@ class RedisBudgetCounter:
                 self._window_seconds,
                 estimated_cost,
                 time.time(),
+                self._reservation_ttl,
             )
             allowed = int(result[0]) == 1
             current = int(result[1])
             ttl = int(result[2])
             return allowed, current, ttl
         except Exception:
-            # On Redis failure, allow the request (fail open for budget)
-            # but log the failure
+            # On Redis failure, DENY the request (fail closed for budget safety)
+            # Budget is a safety control; failing open would allow unlimited spend.
             import logging
-            logging.getLogger("knowledgeforge.budget").warning(
-                "Redis budget counter unavailable for %s/%s; allowing request",
+            logging.getLogger("knowledgeforge.budget").error(
+                "Redis budget counter unavailable for %s/%s; denying request",
                 self._budget_type,
                 tenant_id,
                 exc_info=True,
             )
-            return True, 0, 0
+            from fastapi import HTTPException, status
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Budget service unavailable; please retry"
+            )
+
+    def release_reservation(self, tenant_id: str, estimated_cost: int) -> bool:
+        """Release a reservation by decrementing the counter.
+
+        Used when a call fails after reservation but before reconciliation.
+        Returns True if release succeeded, False if Redis unavailable.
+        """
+        try:
+            result = self._client.eval(  # type: ignore[attr-defined]
+                self._SCRIPT_RELEASE,
+                1,
+                self._key(tenant_id),
+                estimated_cost,
+                self._reservation_ttl,
+            )
+            return int(result[0]) == 1
+        except Exception:
+            import logging
+            logging.getLogger("knowledgeforge.budget").warning(
+                "Redis budget release failed for %s/%s",
+                self._budget_type,
+                tenant_id,
+                exc_info=True,
+            )
+            return False
 
     def get_usage(self, tenant_id: str) -> tuple[int, int]:
         """Get current usage and TTL for a tenant."""
@@ -152,24 +205,25 @@ class RedisBudgetCounter:
             return False
 
 
-def _get_redis_client() -> Optional[object]:
+def _get_redis_client() -> object | None:
     """Build Redis client for budget counters."""
     settings = get_settings()
     if not settings.redis_url:
         return None
     try:
-        import redis  # type: ignore[import-not-found]
+        import redis
         return redis.Redis.from_url(settings.redis_url, decode_responses=True)
     except ImportError:
         return None
 
 
 # Global budget counter instances (lazy-initialized)
-_token_budget: Optional[RedisBudgetCounter] = None
-_extraction_budget: Optional[RedisBudgetCounter] = None
+_token_budget: RedisBudgetCounter | None = None
+_extraction_budget: RedisBudgetCounter | None = None
+_platform_token_budget: RedisBudgetCounter | None = None
 
 
-def get_token_budget() -> Optional[RedisBudgetCounter]:
+def get_token_budget() -> RedisBudgetCounter | None:
     """Get or create the token budget counter for /ask calls."""
     global _token_budget
     if _token_budget is None:
@@ -183,7 +237,26 @@ def get_token_budget() -> Optional[RedisBudgetCounter]:
     return _token_budget
 
 
-def get_extraction_budget() -> Optional[RedisBudgetCounter]:
+def get_platform_token_budget() -> RedisBudgetCounter | None:
+    """Get or create the platform-wide token budget counter.
+
+    This provides a hard ceiling on total platform token spend per day,
+    independent of per-tenant budgets. When this limit is approached,
+    all /ask calls are rejected regardless of individual tenant budgets.
+    """
+    global _platform_token_budget
+    if _platform_token_budget is None:
+        client = _get_redis_client()
+        if client is None:
+            return None
+        settings = get_settings()
+        # Default to 10M tokens/day platform-wide (10x per-tenant default)
+        daily_limit = getattr(settings, 'platform_daily_token_budget', 10_000_000)
+        _platform_token_budget = RedisBudgetCounter(client, "platform_tokens", daily_limit)
+    return _platform_token_budget
+
+
+def get_extraction_budget() -> RedisBudgetCounter | None:
     """Get or create the extraction budget counter."""
     global _extraction_budget
     if _extraction_budget is None:
