@@ -66,10 +66,22 @@ class Settings(BaseSettings):
     # from deterministic local fixtures so the extraction loop runs without
     # credentials. Refused outside development.
     local_extraction: bool = False
+    # Admin console cross-tenant access — disabled by default; requires
+    # deliberate enablement and platform-admin role (separate from tenant roles).
+    admin_console_enabled: bool = False
+    # Extractor guard limits (zip bomb / large line protection).
+    max_pptx_decompressed_bytes: int = 100_000_000  # 100 MB
+    max_csv_line_bytes: int = 10_000_000  # 10 MB per line
+    max_csv_total_bytes: int = 200_000_000  # 200 MB total
+    # HNSW query-time recall/latency knob (set via SET LOCAL hnsw.ef_search = N).
+    hnsw_ef_search: int = 100
     # USD per 1M tokens; 0.0 matches the Gemini free tier. Set per the current
     # pricing page when cost tracking must be real money.
     gemini_input_token_cost: float = 0.0
     gemini_output_token_cost: float = 0.0
+    # Per-tenant daily budget limits (enforced when Redis is configured).
+    daily_token_budget: int = 1_000_000
+    daily_extraction_budget: int = 1000
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 
