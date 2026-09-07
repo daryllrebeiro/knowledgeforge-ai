@@ -157,7 +157,7 @@ def test_ask_in_conversation_rewrites_and_persists_exchange(monkeypatch) -> None
     monkeypatch.setattr(
         api,
         "generate_answer",
-        lambda generator, question, chunks: (
+        lambda generator, question, chunks, extractions=(): (
             generated_questions.append(question),
             GeneratedAnswer("Five MB. [doc 1, page 4]", [Citation(1, 4)], 10, 20),
         )[1],
@@ -280,3 +280,164 @@ def test_ask_stream_reports_error_when_generation_fails(monkeypatch) -> None:
     assert response.status_code == 200
     assert "event: error" in response.text
     assert "event: done" not in response.text
+
+
+def test_citation_attribution_across_turns_with_shared_page_number(monkeypatch) -> None:
+    """Two documents sharing a page number, asked in same conversation across two turns, cite correctly (C1)."""
+    # Document A and Document B both have page 4
+    DOC_A = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+    DOC_B = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+    CHUNK_A = UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
+    CHUNK_B = UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
+
+    embedded_questions: list[str] = []
+    retrieved_chunks_per_turn: list[list[tuple]] = []
+
+    def fake_retrieve(*args, **kwargs):
+        # Alternate between returning doc A and doc B chunks
+        turn = len(retrieved_chunks_per_turn)
+        if turn == 0:
+            # First turn: retrieve from document A, page 4
+            chunks = [(CHUNK_A, DOC_A, TextChunk("Content from doc A page 4", 4, "section1"))]
+        else:
+            # Second turn: retrieve from document B, page 4
+            chunks = [(CHUNK_B, DOC_B, TextChunk("Content from doc B page 4", 4, "section2"))]
+        retrieved_chunks_per_turn.append(chunks)
+        return chunks
+
+    monkeypatch.setattr(api, "get_connection", lambda: nullcontext(FakeConnection()))
+    monkeypatch.setattr(api, "_gemini_client", lambda: object())
+    monkeypatch.setattr(api, "gemini_breaker", lambda: CircuitBreaker())
+
+    def fake_embed(client, texts, model):
+        embedded_questions.extend(texts)
+        return EmbeddingResult([[0.1, 0.2]], 5)
+
+    monkeypatch.setattr(api, "embed_texts", fake_embed)
+    monkeypatch.setattr(api, "retrieve_chunks", fake_retrieve)
+
+    # Turn 1: Ask about document A
+    monkeypatch.setattr(
+        api,
+        "generate_answer",
+        lambda generator, question, chunks, extractions=(): GeneratedAnswer(
+            "Answer from doc A. [doc 1, page 4]", [Citation(1, 4)], 10, 20
+        ),
+    )
+    monkeypatch.setattr(api, "record_request_log", lambda *args, **kwargs: None)
+
+    persisted_exchanges: list[dict] = []
+
+    def capture_exchange(connection, conversation_id, tenant_id, **kwargs):
+        persisted_exchanges.append(kwargs)
+
+    monkeypatch.setattr(api, "append_exchange", capture_exchange)
+    monkeypatch.setattr(
+        api,
+        "get_conversation_messages",
+        lambda *args, **kwargs: [],  # No history for first turn
+    )
+
+    response1 = TestClient(app).post(
+        "/ask", json={"question": "What is in document A?", "conversation_id": str(CONVERSATION_ID)}
+    )
+
+    assert response1.status_code == 200
+    body1 = response1.json()
+    assert body1["conversation_id"] == str(CONVERSATION_ID)
+    # Should cite document A (the first document retrieved gets doc number 1)
+    assert body1["citations"] == [{"document_id": str(DOC_A), "page": 4}]
+    assert len(persisted_exchanges) == 1
+    assert persisted_exchanges[0]["citations"] == [{"document_id": str(DOC_A), "page": 4}]
+
+    # Turn 2: Follow-up about document B (simulates retrieval returning doc B)
+    # History now contains the first exchange
+    monkeypatch.setattr(
+        api,
+        "get_conversation_messages",
+        lambda *args, **kwargs: [
+            MessageRow("user", "What is in document A?", [], "2026-09-03T00:00:01+00:00"),
+            MessageRow("assistant", "Answer from doc A. [doc 1, page 4]", [{"document_id": str(DOC_A), "page": 4}], "2026-09-03T00:00:02+00:00"),
+        ],
+    )
+    monkeypatch.setattr(
+        api,
+        "rewrite_followup_question",
+        lambda generator, question, history: "What is in document B?",
+    )
+    monkeypatch.setattr(
+        api,
+        "generate_answer",
+        lambda generator, question, chunks, extractions=(): GeneratedAnswer(
+            "Answer from doc B. [doc 1, page 4]", [Citation(1, 4)], 10, 20
+        ),
+    )
+
+    response2 = TestClient(app).post(
+        "/ask", json={"question": "And document B?", "conversation_id": str(CONVERSATION_ID)}
+    )
+
+    assert response2.status_code == 200
+    body2 = response2.json()
+    assert body2["conversation_id"] == str(CONVERSATION_ID)
+    # Should cite document B (now the first retrieved document gets doc number 1)
+    assert body2["citations"] == [{"document_id": str(DOC_B), "page": 4}]
+    assert len(persisted_exchanges) == 2
+    assert persisted_exchanges[1]["citations"] == [{"document_id": str(DOC_B), "page": 4}]
+
+    # Verify both turns retrieved correctly (doc A first, then doc B)
+    assert len(retrieved_chunks_per_turn) == 2
+    assert retrieved_chunks_per_turn[0][0][1] == DOC_A
+    assert retrieved_chunks_per_turn[1][0][1] == DOC_B
+
+
+def test_rewrite_failure_degrades_to_raw_question(monkeypatch) -> None:
+    """Rewrite failure falls back to raw question; self-contained follow-up still works."""
+    embedded_questions: list[str] = []
+    rewrite_called = {"count": 0}
+
+    def fake_rewrite(generator, question, history):
+        rewrite_called["count"] += 1
+        raise RuntimeError("Gemini unavailable")
+
+    monkeypatch.setattr(api, "get_connection", lambda: nullcontext(FakeConnection()))
+    monkeypatch.setattr(api, "_gemini_client", lambda: object())
+    monkeypatch.setattr(api, "gemini_breaker", lambda: CircuitBreaker())
+
+    def fake_embed(client, texts, model):
+        embedded_questions.extend(texts)
+        return EmbeddingResult([[0.1, 0.2]], 5)
+
+    monkeypatch.setattr(api, "embed_texts", fake_embed)
+    monkeypatch.setattr(
+        api, "retrieve_chunks", lambda *args, **kwargs: [(CHUNK_ID, DOCUMENT_ID, TextChunk("Self-contained answer content", 4))]
+    )
+    monkeypatch.setattr(
+        api,
+        "generate_answer",
+        lambda generator, question, chunks, extractions=(): GeneratedAnswer(
+            "Answer using raw question. [doc 1, page 4]", [Citation(1, 4)], 10, 20
+        ),
+    )
+    monkeypatch.setattr(api, "record_request_log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(api, "rewrite_followup_question", fake_rewrite)
+    monkeypatch.setattr(
+        api,
+        "get_conversation_messages",
+        lambda *args, **kwargs: [
+            MessageRow("user", "What is the upload limit?", [], "2026-09-03T00:00:01+00:00"),
+            MessageRow("assistant", "10 MB.", [], "2026-09-03T00:00:02+00:00"),
+        ],
+    )
+
+    response = TestClient(app).post(
+        "/ask", json={"question": "What is the limit?", "conversation_id": str(CONVERSATION_ID)}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    # Rewrite was attempted but failed
+    assert rewrite_called["count"] == 1
+    # Raw question was used for retrieval (self-contained, so it works)
+    assert embedded_questions == ["What is the limit?"]
+    assert body["answer"] == "Answer using raw question. [doc 1, page 4]"

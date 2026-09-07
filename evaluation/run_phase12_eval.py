@@ -161,11 +161,11 @@ def evaluate_profile(
             continue
 
         answerable += 1
-        top_sources = [source for source, _ in top]
+        top_sources = [item[0][0] for item in top]
         hit = expected_source in top_sources
         hits += int(hit)
         if not hit:
-            if local:
+            if local and expected_source is not None:
                 overlap_terms = set(case["question"].lower().split()) & set(
                     sources[expected_source].lower().split()
                 )

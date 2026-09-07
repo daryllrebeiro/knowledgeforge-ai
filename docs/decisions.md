@@ -253,6 +253,25 @@ configuration wins.
 
 
 
+## 2026-09-05 — Phase 12 retrieval evaluation (local deterministic run)
+
+Local deterministic evaluation using SHA-256 hash vectors on the 44-question golden set (40 answerable, 4 refusal):
+
+| Profile | Vector Hit@5 | Hybrid Hit@5 |
+|---|---:|---:|
+| baseline-500-100 | 12.5% | 17.5% |
+| large-800-150 | 12.5% | 17.5% |
+| section-aware-500-100 | 15.0% | 22.5% |
+
+These numbers use deterministic local embeddings (not real Gemini embeddings) and serve only as a structural smoke test. The production decision on chunking profile and hybrid search remains pending the scheduled real-Gemini evaluation run (requires `GEMINI_API_KEY`). Run with:
+```bash
+uv run python -m evaluation.run_phase12_eval  # real Gemini embeddings
+uv run python -m evaluation.run_phase12_eval --local  # deterministic local embeddings
+```
+
+Full results saved to `docs/phase12-evaluation.json`.
+
+
 ## 2026-09-04 - Phase 2.5: extraction is a second pipeline with its own blast radius
 
 Structured extraction (invoices first) runs as a dedicated worker behind a

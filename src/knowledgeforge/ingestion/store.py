@@ -519,3 +519,78 @@ def count_documents(connection: Connection, tenant_id: UUID) -> int:
         cursor.execute("SELECT count(*) FROM documents WHERE tenant_id = %s", (tenant_id,))
         row = cursor.fetchone()
         return int(row[0]) if row is not None else 0
+
+
+# Admin functions (cross-tenant)
+
+class AdminTenantRow(NamedTuple):
+    tenant_id: UUID
+    name: str
+    created_at: str
+    document_count: int
+    query_count: int
+    cost_estimate: float
+
+
+def list_all_tenants(
+    connection: Connection, *, limit: int = 50, offset: int = 0
+) -> list[AdminTenantRow]:
+    """List all tenants with usage stats (admin only)."""
+    if limit <= 0 or offset < 0:
+        raise ValueError("limit must be positive and offset non-negative")
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT t.id, t.name, t.created_at,
+                   COALESCE(doc_counts.cnt, 0) AS document_count,
+                   COALESCE(req_counts.cnt, 0) AS query_count,
+                   COALESCE(req_counts.cost, 0) AS cost_estimate
+            FROM tenants t
+            LEFT JOIN (
+                SELECT tenant_id, count(*) AS cnt FROM documents GROUP BY tenant_id
+            ) doc_counts ON doc_counts.tenant_id = t.id
+            LEFT JOIN (
+                SELECT tenant_id, count(*) AS cnt, COALESCE(sum(cost_estimate), 0) AS cost
+                FROM request_logs GROUP BY tenant_id
+            ) req_counts ON req_counts.tenant_id = t.id
+            ORDER BY t.created_at DESC
+            LIMIT %s OFFSET %s
+            """,
+            (limit, offset),
+        )
+        rows = cursor.fetchall()
+    return [
+        AdminTenantRow(
+            tenant_id=UUID(str(row[0])),
+            name=str(row[1]),
+            created_at=str(row[2]),
+            document_count=int(row[3]),
+            query_count=int(row[4]),
+            cost_estimate=float(row[5]),
+        )
+        for row in rows
+    ]
+
+
+def list_all_failed_ingestions(
+    connection: Connection, *, limit: int = 50, offset: int = 0
+) -> list[tuple[UUID, UUID, str, str]]:
+    """List failed ingestions across all tenants (admin only)."""
+    if limit <= 0 or offset < 0:
+        raise ValueError("limit must be positive and offset non-negative")
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT fi.id, fi.tenant_id, t.name AS tenant_name, fi.filename, fi.error_message
+            FROM failed_ingestions fi
+            JOIN tenants t ON t.id = fi.tenant_id
+            ORDER BY fi.attempted_at DESC
+            LIMIT %s OFFSET %s
+            """,
+            (limit, offset),
+        )
+        rows = cursor.fetchall()
+    return [
+        (UUID(str(row[0])), UUID(str(row[1])), str(row[2]), str(row[3]), str(row[4]))
+        for row in rows
+    ]

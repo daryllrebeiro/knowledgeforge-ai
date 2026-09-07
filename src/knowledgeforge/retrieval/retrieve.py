@@ -1,9 +1,11 @@
 from collections.abc import Sequence
+from datetime import datetime
 from uuid import UUID
 
 from pgvector.psycopg import register_vector
 from psycopg import Connection
 
+from knowledgeforge.config import get_settings
 from knowledgeforge.ingestion.chunk import TextChunk
 
 
@@ -17,6 +19,9 @@ def retrieve_chunks(
     doc_type: str | None = None,
     document_id: UUID | None = None,
     document_ids: Sequence[UUID] | None = None,
+    filename: str | None = None,
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
     hybrid: bool = False,
     hybrid_lexical_weight: float = 0.15,
 ) -> list[tuple[UUID, UUID, TextChunk]]:
@@ -26,7 +31,8 @@ def retrieve_chunks(
     a caller cannot accidentally search every tenant's chunks. ``document_id``
     scopes to one document; ``document_ids`` (the structured_filters pre-step)
     scopes to a matched set — both are tenant-and-ed on top of the mandatory
-    tenant filter. When ``hybrid`` is set, cosine similarity is combined with a
+    tenant filter. ``filename``, ``created_after``, ``created_before`` filter on
+    document metadata. When ``hybrid`` is set, cosine similarity is combined with a
     weighted tsvector lexical rank (migration 009), which helps exact-match
     questions (IDs, error codes).
     """
@@ -58,6 +64,15 @@ def retrieve_chunks(
             return []
         clauses.append("c.document_id = ANY(%s)")
         params.append(list(document_ids))
+    if filename is not None:
+        clauses.append("d.source_filename = %s")
+        params.append(filename)
+    if created_after is not None:
+        clauses.append("d.created_at >= %s")
+        params.append(created_after)
+    if created_before is not None:
+        clauses.append("d.created_at <= %s")
+        params.append(created_before)
     filters = "WHERE " + " AND ".join(clauses)
     filter_params = tuple(params)
     if hybrid:
@@ -84,6 +99,10 @@ def retrieve_chunks(
         """
         final_params = (*filter_params, embedding, limit)
     with connection.cursor() as cursor:
+        # Set HNSW ef_search for this query (query-time recall/latency knob)
+        settings = get_settings()
+        if settings.hnsw_ef_search > 0:
+            cursor.execute("SET LOCAL hnsw.ef_search = %s", (settings.hnsw_ef_search,))
         cursor.execute(query, final_params)
         rows = cursor.fetchall()
     return [

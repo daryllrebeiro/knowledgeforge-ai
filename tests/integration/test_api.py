@@ -156,6 +156,7 @@ def test_ask_contract_returns_citation_with_token_telemetry(monkeypatch, fake_db
     assert response.json() == {
         "answer": "The answer is here. [doc 1, page 4]",
         "citations": [{"document_id": str(document_id), "page": 4}],
+        "conversation_id": None,
     }
     # Token telemetry: query embedding + generation tokens, chunk IDs not document IDs.
     assert captured["input_tokens"] == 15
@@ -204,7 +205,7 @@ def test_ask_contract_preserves_grounded_refusal(monkeypatch, fake_db) -> None:
     response = TestClient(app).post("/ask", json={"question": "Not in the corpus?"})
 
     assert response.status_code == 200
-    assert response.json() == {"answer": "I don't have enough information.", "citations": []}
+    assert response.json() == {"answer": "I don't have enough information.", "citations": [], "conversation_id": None}
 
 
 def test_ask_passes_authenticated_tenant_and_hybrid_settings(monkeypatch, fake_db) -> None:
@@ -243,7 +244,9 @@ def test_ask_returns_503_when_gemini_circuit_is_open(monkeypatch, fake_db) -> No
     breaker = CircuitBreaker(failure_threshold=1, recovery_seconds=60)
     breaker.opened_at = monotonic()  # force the open state
     monkeypatch.setattr(api, "_gemini_client", lambda: FakeGeminiClient())
-    monkeypatch.setattr(api, "gemini_breaker", lambda: breaker)
+    monkeypatch.setattr(api, "gemini_rewrite_breaker", lambda: breaker)
+    monkeypatch.setattr(api, "gemini_generation_breaker", lambda: breaker)
+    monkeypatch.setattr(api, "gemini_embedding_breaker", lambda: breaker)
 
     response = TestClient(app).post("/ask", json={"question": "Anything?"})
 

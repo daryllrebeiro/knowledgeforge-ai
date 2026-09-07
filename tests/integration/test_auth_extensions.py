@@ -16,6 +16,8 @@ KEY_ID = UUID("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
 
 def test_refresh_rotates_and_returns_new_tokens(monkeypatch) -> None:
     monkeypatch.setattr(api, "get_connection", lambda: nullcontext(object()))
+    monkeypatch.setattr(api, "get_user_role_for_tenant", lambda user_id, tenant_id: "member")
+    monkeypatch.setattr(api, "get_user_platform_admin", lambda user_id: False)
 
     def fake_rotate(connection, token):
         assert token == "presented-token"
@@ -117,6 +119,8 @@ def test_api_key_authenticates_protected_routes(monkeypatch) -> None:
 
     monkeypatch.setattr(auth, "get_connection", lambda: nullcontext(object()))
     monkeypatch.setattr(auth, "verify_api_key", lambda connection, key: (USER_ID, TENANT_ID))
+    monkeypatch.setattr(auth, "get_user_role_for_tenant", lambda user_id, tenant_id: "member")
+    monkeypatch.setattr(auth, "get_user_platform_admin", lambda user_id: False)
     monkeypatch.setattr(api, "get_connection", lambda: nullcontext(object()))
     monkeypatch.setattr(api, "list_documents", lambda *args, **kwargs: [])
     app.dependency_overrides.pop(api.get_current_user, None)
@@ -124,7 +128,7 @@ def test_api_key_authenticates_protected_routes(monkeypatch) -> None:
     try:
         response = TestClient(app).get("/documents", headers={"X-API-Key": "kf_secret"})
     finally:
-        app.dependency_overrides[api.get_current_user] = lambda: (None, None)
+        app.dependency_overrides[api.get_current_user] = lambda: (None, None, "member", False)
 
     assert response.status_code == 200
     assert response.json() == {"documents": [], "limit": 50, "offset": 0}
@@ -140,7 +144,7 @@ def test_invalid_api_key_is_rejected(monkeypatch) -> None:
     try:
         response = TestClient(app).get("/documents", headers={"X-API-Key": "kf_wrong"})
     finally:
-        app.dependency_overrides[api.get_current_user] = lambda: (None, None)
+        app.dependency_overrides[api.get_current_user] = lambda: (None, None, "member", False)
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Invalid API key"}
