@@ -96,6 +96,8 @@ class Settings(BaseSettings):
     stripe_pro_price_id: str = ""
     stripe_enterprise_price_id: str = ""
     stripe_payment_grace_period_days: int = 3
+    # Custom Stripe API base URL (e.g. "http://localhost:12111" for stripe-mock)
+    stripe_api_base: str = ""
     # When True, Stripe API calls fall back to deterministic local mock sessions.
     # Refused outside development by validate_runtime().
     local_billing: bool = False

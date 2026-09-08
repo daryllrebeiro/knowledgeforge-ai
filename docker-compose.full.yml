@@ -46,6 +46,14 @@ services:
     networks:
       - internal
 
+  stripe-mock:
+    image: stripe/stripe-mock:v0.190.0
+    ports:
+      - "12111:12111"
+    networks:
+      - internal
+
+
   local-cloud-init:
     image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
     depends_on:
@@ -102,6 +110,7 @@ services:
       STORAGE_EMULATOR_HOST: http://fake-gcs:4443
       PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
       GEMINI_API_KEY: local-emulator-not-used
+      STRIPE_API_BASE: http://stripe-mock:12111
     healthcheck:
       test:
         ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]

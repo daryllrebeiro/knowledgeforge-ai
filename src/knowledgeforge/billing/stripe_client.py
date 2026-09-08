@@ -54,6 +54,15 @@ def construct_stripe_event(
     return dict(event)
 
 
+def _configure_stripe() -> None:
+    """Configure module-level Stripe client settings from application configuration."""
+    settings = get_settings()
+    if settings.stripe_api_base:
+        stripe.api_base = settings.stripe_api_base
+    if settings.stripe_secret_key:
+        stripe.api_key = settings.stripe_secret_key
+
+
 def create_checkout_session(
     tenant_id: str,
     tier: str,
@@ -64,16 +73,23 @@ def create_checkout_session(
     """Create a Stripe Checkout Session for subscription tier upgrade.
 
     Returns (session_id, url).
-    If LOCAL_BILLING is enabled (or in development without keys), returns mock session.
+    If LOCAL_BILLING is enabled (or in development without keys or mock server), returns mock session.
     Outside development, requires STRIPE_SECRET_KEY.
     """
     settings = get_settings()
-    if settings.local_billing or (not settings.stripe_secret_key and settings.environment.lower() == "development"):
+    _configure_stripe()
+
+    if settings.local_billing or (
+        not settings.stripe_secret_key
+        and not settings.stripe_api_base
+        and settings.environment.lower() == "development"
+    ):
         mock_id = f"cs_test_{uuid4().hex[:16]}"
         mock_url = f"https://checkout.stripe.com/test/{mock_id}?tier={tier}&tenant={tenant_id}"
         return mock_id, mock_url
 
-    if not settings.stripe_secret_key:
+    secret_key = settings.stripe_secret_key or ("sk_test_mock" if settings.stripe_api_base else "")
+    if not secret_key:
         raise RuntimeError("STRIPE_SECRET_KEY must be configured when LOCAL_BILLING is disabled")
 
     price_id = (
@@ -96,7 +112,7 @@ def create_checkout_session(
         params["customer"] = customer_id
 
     session = stripe.checkout.Session.create(
-        api_key=settings.stripe_secret_key,
+        api_key=secret_key,
         **params,
     )
     return str(session.id), str(session.url)
@@ -109,19 +125,27 @@ def create_portal_session(
     """Create a Stripe Customer Billing Portal session for managing subscriptions.
 
     Returns portal session URL.
-    If LOCAL_BILLING is enabled (or in development without keys), returns mock portal URL.
+    If LOCAL_BILLING is enabled (or in development without keys or mock server), returns mock portal URL.
     Outside development, requires STRIPE_SECRET_KEY.
     """
     settings = get_settings()
-    if settings.local_billing or (not settings.stripe_secret_key and settings.environment.lower() == "development"):
+    _configure_stripe()
+
+    if settings.local_billing or (
+        not settings.stripe_secret_key
+        and not settings.stripe_api_base
+        and settings.environment.lower() == "development"
+    ):
         return f"https://billing.stripe.com/test/portal_{uuid4().hex[:16]}?customer={customer_id}"
 
-    if not settings.stripe_secret_key:
+    secret_key = settings.stripe_secret_key or ("sk_test_mock" if settings.stripe_api_base else "")
+    if not secret_key:
         raise RuntimeError("STRIPE_SECRET_KEY must be configured when LOCAL_BILLING is disabled")
 
     session = stripe.billing_portal.Session.create(
-        api_key=settings.stripe_secret_key,
+        api_key=secret_key,
         customer=customer_id,
         return_url=return_url,
     )
     return str(session.url)
+
