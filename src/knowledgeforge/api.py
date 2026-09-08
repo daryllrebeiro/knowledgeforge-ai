@@ -2515,18 +2515,23 @@ async def stripe_webhook(request: Request) -> dict:
     payload_bytes = await request.body()
     sig_header = request.headers.get("stripe-signature", "")
 
-    # Verify signature if webhook secret is configured
-    if settings.stripe_webhook_secret:
-        valid = verify_stripe_signature(
-            payload_bytes,
-            sig_header,
-            settings.stripe_webhook_secret,
+    # Fail closed: reject every request if webhook secret is unconfigured
+    if not settings.stripe_webhook_secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Stripe webhook endpoint is not configured (missing webhook secret)",
         )
-        if not valid:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid Stripe signature",
-            )
+
+    valid = verify_stripe_signature(
+        payload_bytes,
+        sig_header,
+        settings.stripe_webhook_secret,
+    )
+    if not valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Stripe signature",
+        )
 
     try:
         import json

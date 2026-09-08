@@ -134,6 +134,17 @@ class Settings(BaseSettings):
                 "GEMINI_API_KEY must be configured when LOCAL_EMBEDDINGS or "
                 "LOCAL_GENERATION is disabled"
             )
+        if self.environment.lower() != "development":
+            billing_enabled = bool(self.stripe_secret_key or self.stripe_webhook_secret)
+            if billing_enabled:
+                if not self.stripe_webhook_secret:
+                    problems.append(
+                        "STRIPE_WEBHOOK_SECRET must be configured in non-development environments when billing is enabled"
+                    )
+                if not self.stripe_secret_key:
+                    problems.append(
+                        "STRIPE_SECRET_KEY must be configured in non-development environments when billing is enabled"
+                    )
         if problems:
             raise RuntimeError("Refusing to start: " + "; ".join(problems))
 

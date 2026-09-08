@@ -8,8 +8,9 @@ def make_settings(**overrides: object) -> Settings:
     jwt_secret_key = overrides.pop("jwt_secret_key", "a-strong-secret-that-is-long-enough")
     gemini_api_key = overrides.pop("gemini_api_key", "real-key")
     local_embeddings = overrides.pop("local_embeddings", False)
+    environment = overrides.pop("environment", "staging")
     return Settings(
-        environment="staging",
+        environment=environment,
         jwt_secret_key=jwt_secret_key,
         gemini_api_key=gemini_api_key,
         local_embeddings=local_embeddings,
@@ -54,3 +55,17 @@ def test_missing_gemini_key_rejected_unless_local_embeddings() -> None:
 
 def test_valid_production_settings_pass() -> None:
     make_settings().validate_runtime()
+
+
+def test_billing_webhook_secret_required_when_billing_enabled_outside_dev() -> None:
+    with pytest.raises(RuntimeError, match="STRIPE_WEBHOOK_SECRET must be configured"):
+        make_settings(environment="production", stripe_secret_key="sk_live_123", stripe_webhook_secret="").validate_runtime()
+
+
+def test_billing_secret_key_required_when_webhook_secret_set_outside_dev() -> None:
+    with pytest.raises(RuntimeError, match="STRIPE_SECRET_KEY must be configured"):
+        make_settings(environment="production", stripe_secret_key="", stripe_webhook_secret="whsec_123").validate_runtime()
+
+
+def test_billing_fully_configured_passes_outside_dev() -> None:
+    make_settings(environment="production", stripe_secret_key="sk_live_123", stripe_webhook_secret="whsec_123").validate_runtime()

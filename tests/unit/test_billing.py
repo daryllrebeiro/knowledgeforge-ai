@@ -501,6 +501,34 @@ def _mock_billing_db(db: MockDB):
     yield db
 
 
+def test_api_stripe_webhook_rejects_when_secret_unset(monkeypatch):
+    db = MockDB()
+    tenant_id = uuid4()
+    db.tenants[tenant_id] = {
+        "name": "Acme",
+        "tier": "free",
+        "subscription_status": "active",
+    }
+    monkeypatch.setattr(api, "get_connection", lambda: _mock_billing_db(db))
+    settings = get_settings().model_copy(
+        update={"stripe_webhook_secret": ""}
+    )
+    monkeypatch.setattr(api, "get_settings", lambda: settings)
+
+    client = TestClient(app)
+    # Attempt to post unsigned payload to upgrade tenant
+    payload = (
+        f'{{"id": "evt_fake", "type": "checkout.session.completed", '
+        f'"data": {{"object": {{"client_reference_id": "{tenant_id}", "metadata": {{"tier": "pro"}}}}}}}}'
+    ).encode("utf-8")
+
+    res = client.post("/billing/webhook", content=payload)
+    assert res.status_code == 503
+    assert "missing webhook secret" in res.json()["detail"]
+    # Verify tenant tier is completely unchanged (fail-closed)
+    assert db.tenants[tenant_id]["tier"] == "free"
+
+
 def test_api_stripe_webhook_rejects_invalid_signature(monkeypatch):
     db = MockDB()
     monkeypatch.setattr(api, "get_connection", lambda: _mock_billing_db(db))
