@@ -117,7 +117,16 @@ class MockCursor:
             self._last_result = rows
             return
 
-        # 8. User purge
+        # 8. Invitations
+        if "FROM invitations" in q:
+            t_id = params[0]
+            rows = []
+            for inv in self.db.invitations.get(t_id, []):
+                rows.append((inv["id"], inv["email"], inv["role"], inv["expires_at"], inv.get("accepted_at"), inv["created_at"]))
+            self._last_result = rows
+            return
+
+        # 9. User purge
         if "DELETE FROM users" in q and "email_verified = false" in q:
             cutoff = params[0]
             deleted = []
@@ -154,6 +163,7 @@ class MockDB:
         self.messages = {}
         self.api_keys = {}
         self.billing_events = {}
+        self.invitations = {}
         self.all_users = {}
 
 
@@ -252,6 +262,15 @@ def test_export_tenant_data_complete():
         "processed_at": now,
         "created_at": now,
     }]
+    inv_id = uuid4()
+    db.invitations[tenant_id] = [{
+        "id": inv_id,
+        "email": "invitee@acme.com",
+        "role": "member",
+        "expires_at": now + timedelta(days=7),
+        "accepted_at": None,
+        "created_at": now,
+    }]
 
     conn = MockConnection(db)
     result = export_tenant_data(conn, tenant_id)
@@ -275,6 +294,28 @@ def test_export_tenant_data_complete():
     assert len(result["billing_events"]) == 1
     assert result["billing_events"][0]["event_id"] == "evt_test_123"
     assert result["billing_events"][0]["event_type"] == "customer.subscription.created"
+    assert len(result["invitations"]) == 1
+    assert result["invitations"][0]["email"] == "invitee@acme.com"
+
+
+def test_all_tenant_scoped_categories_accounted_for():
+    db = MockDB()
+    tenant_id = uuid4()
+    now = datetime.now(UTC)
+    db.tenants[tenant_id] = {
+        "id": tenant_id,
+        "name": "Acme",
+        "created_at": now,
+        "tier": "pro",
+        "subscription_status": "active",
+    }
+    conn = MockConnection(db)
+    result = export_tenant_data(conn, tenant_id)
+    expected_categories = {
+        "tenant", "users", "documents", "chunks", "extractions",
+        "conversations", "api_keys", "billing_events", "invitations", "export_metadata"
+    }
+    assert set(result.keys()) == expected_categories
 
 
 def test_purge_unverified_accounts():

@@ -589,6 +589,28 @@ def export_tenant_data(connection: Connection, tenant_id: UUID) -> dict[str, Any
             for r in cursor.fetchall()
         ]
 
+        # 8. Invitations
+        cursor.execute(
+            """
+            SELECT id, email, role, expires_at, accepted_at, created_at
+            FROM invitations
+            WHERE tenant_id = %s
+            ORDER BY created_at
+            """,
+            (tenant_id,),
+        )
+        invitations = [
+            {
+                "id": str(r[0]),
+                "email": r[1],
+                "role": r[2],
+                "expires_at": str(r[3]),
+                "accepted_at": str(r[4]) if r[4] else None,
+                "created_at": str(r[5]),
+            }
+            for r in cursor.fetchall()
+        ]
+
     return {
         "tenant": tenant_data,
         "users": users,
@@ -598,6 +620,7 @@ def export_tenant_data(connection: Connection, tenant_id: UUID) -> dict[str, Any
         "conversations": conversations,
         "api_keys": api_keys,
         "billing_events": billing_events,
+        "invitations": invitations,
         "export_metadata": {
             "format_version": "2.0",
             "gdpr_compliance": "Article 20 Data Portability",
