@@ -127,6 +127,22 @@ from knowledgeforge.security.refresh import (
     revoke_refresh_family,
     rotate_refresh_token,
 )
+from knowledgeforge.security.ssrf import SSRFValidationError, validate_webhook_url
+from knowledgeforge.security.webhooks import (
+    delete_webhook,
+    generate_webhook_secret,
+    list_webhooks,
+    register_webhook,
+)
+from knowledgeforge.security.sso import (
+    build_authorization_url,
+    create_sso_state,
+    get_sso_config,
+    process_sso_claims,
+    save_sso_config,
+    validate_enterprise_tier,
+    verify_sso_state,
+)
 from knowledgeforge.worker.cloud import CloudStorageClient, PubSubPublisher
 from knowledgeforge.billing import (
     CheckoutSessionRequest,
@@ -2436,6 +2452,464 @@ def remove_account(current_user: tuple[UUID, UUID, str, bool] = Depends(get_curr
         storage = CloudStorageClient(settings.gcs_bucket, settings.gcp_project_id)
         for storage_uri in storage_uris:
             storage.delete(storage_uri)
+
+
+# Self-Service Tenant Dashboard & Usage Endpoints (F5)
+
+class TenantUsageResponse(BaseModel):
+    tenant_id: str
+    documents_count: int
+    chunks_count: int
+    extractions_count: int
+    conversations_count: int
+    queries_count: int
+    cost_estimate_total: float
+    daily_token_usage: int
+    daily_token_budget: int
+    daily_extraction_usage: int
+    daily_extraction_budget: int
+
+
+class TenantMetadataResponse(BaseModel):
+    id: str
+    name: str
+    tier: str
+    subscription_status: str
+    created_at: str
+
+
+class TenantDailyTrendResponse(BaseModel):
+    day: str
+    queries: int
+    input_tokens: int
+    output_tokens: int
+    cost_estimate: float
+
+
+class TenantDashboardResponse(BaseModel):
+    tenant: TenantMetadataResponse
+    usage: TenantUsageResponse
+    daily_trends: list[TenantDailyTrendResponse]
+
+
+@router.get("/tenant/usage", response_model=TenantUsageResponse, tags=["tenant"])
+def get_tenant_usage_endpoint(
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> TenantUsageResponse:
+    """Self-service usage metrics strictly scoped to the caller's tenant."""
+    _, tenant_id, _, _ = current_user
+    settings = get_settings()
+
+    with get_connection() as connection:
+        doc_count, query_count, cost = tenant_usage(connection, tenant_id)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT count(*)
+                FROM chunks c
+                JOIN documents d ON d.id = c.document_id
+                WHERE d.tenant_id = %s
+                """,
+                (tenant_id,),
+            )
+            chunks_count = cursor.fetchone()[0]
+
+            cursor.execute(
+                "SELECT count(*) FROM document_extractions WHERE tenant_id = %s",
+                (tenant_id,),
+            )
+            extractions_count = cursor.fetchone()[0]
+
+            cursor.execute(
+                "SELECT count(*) FROM conversations WHERE tenant_id = %s",
+                (tenant_id,),
+            )
+            conversations_count = cursor.fetchone()[0]
+
+    token_budget = get_token_budget()
+    extraction_budget = get_extraction_budget()
+    token_usage = token_budget.get_usage(str(tenant_id))[0] if token_budget else 0
+    extraction_usage = extraction_budget.get_usage(str(tenant_id))[0] if extraction_budget else 0
+
+    return TenantUsageResponse(
+        tenant_id=str(tenant_id),
+        documents_count=doc_count,
+        chunks_count=chunks_count,
+        extractions_count=extractions_count,
+        conversations_count=conversations_count,
+        queries_count=query_count,
+        cost_estimate_total=cost,
+        daily_token_usage=token_usage,
+        daily_token_budget=settings.daily_token_budget,
+        daily_extraction_usage=extraction_usage,
+        daily_extraction_budget=settings.daily_extraction_budget,
+    )
+
+
+@router.get("/tenant/dashboard", response_model=TenantDashboardResponse, tags=["tenant"])
+def get_tenant_dashboard_endpoint(
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> TenantDashboardResponse:
+    """Self-service comprehensive dashboard strictly scoped to the caller's tenant."""
+    _, tenant_id, _, _ = current_user
+    settings = get_settings()
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, name, tier, subscription_status, created_at FROM tenants WHERE id = %s",
+                (tenant_id,),
+            )
+            tenant_row = cursor.fetchone()
+            if not tenant_row:
+                raise HTTPException(status_code=404, detail="Tenant not found")
+
+            doc_count, query_count, cost = tenant_usage(connection, tenant_id)
+
+            cursor.execute(
+                """
+                SELECT count(*)
+                FROM chunks c
+                JOIN documents d ON d.id = c.document_id
+                WHERE d.tenant_id = %s
+                """,
+                (tenant_id,),
+            )
+            chunks_count = cursor.fetchone()[0]
+
+            cursor.execute(
+                "SELECT count(*) FROM document_extractions WHERE tenant_id = %s",
+                (tenant_id,),
+            )
+            extractions_count = cursor.fetchone()[0]
+
+            cursor.execute(
+                "SELECT count(*) FROM conversations WHERE tenant_id = %s",
+                (tenant_id,),
+            )
+            conversations_count = cursor.fetchone()[0]
+
+        daily_rows = tenant_usage_daily(connection, tenant_id, days=14)
+
+    token_budget = get_token_budget()
+    extraction_budget = get_extraction_budget()
+    token_usage = token_budget.get_usage(str(tenant_id))[0] if token_budget else 0
+    extraction_usage = extraction_budget.get_usage(str(tenant_id))[0] if extraction_budget else 0
+
+    return TenantDashboardResponse(
+        tenant=TenantMetadataResponse(
+            id=str(tenant_row[0]),
+            name=tenant_row[1],
+            tier=str(tenant_row[2]),
+            subscription_status=str(tenant_row[3]),
+            created_at=str(tenant_row[4]),
+        ),
+        usage=TenantUsageResponse(
+            tenant_id=str(tenant_id),
+            documents_count=doc_count,
+            chunks_count=chunks_count,
+            extractions_count=extractions_count,
+            conversations_count=conversations_count,
+            queries_count=query_count,
+            cost_estimate_total=cost,
+            daily_token_usage=token_usage,
+            daily_token_budget=settings.daily_token_budget,
+            daily_extraction_usage=extraction_usage,
+            daily_extraction_budget=settings.daily_extraction_budget,
+        ),
+        daily_trends=[
+            TenantDailyTrendResponse(
+                day=r.day,
+                queries=r.queries,
+                input_tokens=r.input_tokens,
+                output_tokens=r.output_tokens,
+                cost_estimate=r.cost_estimate,
+            )
+            for r in daily_rows
+        ],
+    )
+
+
+# Outbound Tenant Webhooks Endpoints (F6)
+
+class CreateWebhookRequest(BaseModel):
+    url: str
+    events: list[str] = Field(default_factory=lambda: ["document.ready", "extraction.ready"])
+    secret: str | None = None
+
+
+class WebhookResponse(BaseModel):
+    id: str
+    tenant_id: str
+    url: str
+    events: list[str]
+    active: bool
+    created_at: str
+
+
+@router.post(
+    "/tenant/webhooks",
+    response_model=WebhookResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["webhooks"],
+)
+def create_tenant_webhook_endpoint(
+    body: CreateWebhookRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> WebhookResponse:
+    """Register an outbound webhook with SSRF validation (owner only)."""
+    _, tenant_id, _, _ = current_user
+    allow_private = False
+
+    try:
+        validate_webhook_url(body.url, allow_private=allow_private)
+    except SSRFValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    secret = body.secret or generate_webhook_secret()
+    with get_connection() as connection:
+        webhook = register_webhook(
+            connection,
+            tenant_id,
+            body.url,
+            secret,
+            body.events,
+            allow_private=allow_private,
+        )
+
+    return WebhookResponse(
+        id=webhook["id"],
+        tenant_id=webhook["tenant_id"],
+        url=webhook["url"],
+        events=webhook["events"],
+        active=webhook["active"],
+        created_at=webhook["created_at"],
+    )
+
+
+@router.get(
+    "/tenant/webhooks",
+    response_model=list[WebhookResponse],
+    tags=["webhooks"],
+)
+def list_tenant_webhooks_endpoint(
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> list[WebhookResponse]:
+    """List all registered webhooks for caller's tenant."""
+    _, tenant_id, _, _ = current_user
+    with get_connection() as connection:
+        webhooks = list_webhooks(connection, tenant_id)
+
+    return [
+        WebhookResponse(
+            id=w["id"],
+            tenant_id=w["tenant_id"],
+            url=w["url"],
+            events=w["events"],
+            active=w["active"],
+            created_at=w["created_at"],
+        )
+        for w in webhooks
+    ]
+
+
+@router.delete(
+    "/tenant/webhooks/{webhook_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["webhooks"],
+)
+def delete_tenant_webhook_endpoint(
+    webhook_id: UUID,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> None:
+    """Delete a registered webhook (owner only)."""
+    _, tenant_id, _, _ = current_user
+    with get_connection() as connection:
+        deleted = delete_webhook(connection, tenant_id, webhook_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found")
+
+
+# Enterprise OIDC SSO Endpoints (F7)
+
+class UpdateSSOConfigRequest(BaseModel):
+    issuer_url: str
+    client_id: str
+    client_secret: str | None = None
+    enabled: bool = True
+
+
+class SSOConfigResponse(BaseModel):
+    tenant_id: str
+    enabled: bool
+    issuer_url: str
+    client_id: str
+    has_client_secret: bool
+    created_at: str
+    updated_at: str
+
+
+class SSOAuthorizeRequest(BaseModel):
+    tenant_id: UUID
+    redirect_uri: str
+
+
+class SSOAuthorizeResponse(BaseModel):
+    authorization_url: str
+    state: str
+
+
+class SSOCallbackRequest(BaseModel):
+    state: str
+    claims: dict[str, Any]
+
+
+class SSOLoginResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    role: str
+
+
+@router.put("/tenant/sso/config", response_model=SSOConfigResponse, tags=["sso"])
+def update_sso_config_endpoint(
+    body: UpdateSSOConfigRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> SSOConfigResponse:
+    """Configure Enterprise OIDC Single Sign-On (owner only, Enterprise tier required)."""
+    _, tenant_id, _, _ = current_user
+    with get_connection() as connection:
+        config = save_sso_config(
+            connection,
+            tenant_id,
+            issuer_url=body.issuer_url,
+            client_id=body.client_id,
+            client_secret=body.client_secret,
+            enabled=body.enabled,
+        )
+    return SSOConfigResponse(**config)
+
+
+@router.get("/tenant/sso/config", response_model=SSOConfigResponse, tags=["sso"])
+def get_sso_config_endpoint(
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> SSOConfigResponse:
+    """View tenant OIDC SSO configuration (Enterprise tier required)."""
+    _, tenant_id, _, _ = current_user
+    with get_connection() as connection:
+        validate_enterprise_tier(connection, tenant_id)
+        config = get_sso_config(connection, tenant_id)
+    if not config:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SSO configuration not found")
+    return SSOConfigResponse(**config)
+
+
+@router.post("/auth/sso/oidc/authorize", response_model=SSOAuthorizeResponse, tags=["sso"])
+def sso_authorize_endpoint(body: SSOAuthorizeRequest) -> SSOAuthorizeResponse:
+    """Initiate an OIDC SSO authorization flow for a tenant."""
+    with get_connection() as connection:
+        validate_enterprise_tier(connection, body.tenant_id)
+        config = get_sso_config(connection, body.tenant_id)
+        if not config or not config["enabled"]:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SSO is not enabled for this tenant")
+
+    state = create_sso_state(body.tenant_id)
+    auth_url = build_authorization_url(config, body.redirect_uri, state)
+    return SSOAuthorizeResponse(authorization_url=auth_url, state=state)
+
+
+@router.post("/auth/sso/oidc/callback", response_model=SSOLoginResponse, tags=["sso"])
+def sso_callback_endpoint(body: SSOCallbackRequest) -> SSOLoginResponse:
+    """Handle OIDC authorization callback, verify claims, provision user, and mint JWT."""
+    tenant_id = verify_sso_state(body.state)
+
+    with get_connection() as connection:
+        validate_enterprise_tier(connection, tenant_id)
+        user_id, _, role = process_sso_claims(connection, tenant_id, body.claims)
+        access_token = create_access_token(user_id, tenant_id, role)
+        refresh_token = create_refresh_token(connection, user_id)
+
+    return SSOLoginResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        role=role,
+    )
+
+
+# Tenant Retention and Data Residency Settings (F8)
+
+VALID_RESIDENCY_REGIONS = {"us", "eu", "apac"}
+
+
+class TenantSettingsResponse(BaseModel):
+    tenant_id: str
+    retention_days: int
+    data_residency: str
+
+
+class UpdateTenantSettingsRequest(BaseModel):
+    retention_days: Annotated[int, Field(ge=0, le=3650)] = 0
+    data_residency: str = Field(default="us", pattern="^(us|eu|apac)$")
+
+
+@router.get("/tenant/settings", response_model=TenantSettingsResponse, tags=["tenant"])
+def get_tenant_settings_endpoint(
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> TenantSettingsResponse:
+    """Retrieve tenant retention policy and data residency region."""
+    _, tenant_id, _, _ = current_user
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT retention_days, data_residency FROM tenants WHERE id = %s",
+                (tenant_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    return TenantSettingsResponse(
+        tenant_id=str(tenant_id),
+        retention_days=int(row[0] or 0),
+        data_residency=str(row[1] or "us"),
+    )
+
+
+@router.put("/tenant/settings", response_model=TenantSettingsResponse, tags=["tenant"])
+def update_tenant_settings_endpoint(
+    body: UpdateTenantSettingsRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> TenantSettingsResponse:
+    """Update tenant retention days and data residency (owner only)."""
+    _, tenant_id, _, _ = current_user
+    residency = body.data_residency.lower().strip()
+    if residency not in VALID_RESIDENCY_REGIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid data_residency '{body.data_residency}'; must be one of {sorted(VALID_RESIDENCY_REGIONS)}",
+        )
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE tenants
+                SET retention_days = %s,
+                    data_residency = %s
+                WHERE id = %s
+                RETURNING retention_days, data_residency;
+                """,
+                (body.retention_days, residency, tenant_id),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+            connection.commit()
+
+    return TenantSettingsResponse(
+        tenant_id=str(tenant_id),
+        retention_days=int(row[0]),
+        data_residency=str(row[1]),
+    )
 
 
 # Admin console endpoints (platform admin only)
