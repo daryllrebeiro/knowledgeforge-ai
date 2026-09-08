@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from typing import NamedTuple
+from typing import Any, NamedTuple
 from uuid import UUID
 
 from pgvector.psycopg import register_vector
@@ -405,6 +405,158 @@ def delete_document(
     if row is None:
         return False, None
     return True, None if row[0] is None else str(row[0])
+
+
+def export_tenant_data(connection: Connection, tenant_id: UUID) -> dict[str, Any]:
+    """Export complete machine-readable tenant data for GDPR Article 20 data portability."""
+    with connection.cursor() as cursor:
+        # 1. Tenant info
+        cursor.execute(
+            "SELECT id, name, created_at, tier, subscription_status FROM tenants WHERE id = %s",
+            (tenant_id,),
+        )
+        tenant_row = cursor.fetchone()
+        if not tenant_row:
+            return {}
+        tenant_data = {
+            "id": str(tenant_row[0]),
+            "name": tenant_row[1],
+            "created_at": str(tenant_row[2]),
+            "tier": str(tenant_row[3]),
+            "subscription_status": str(tenant_row[4]),
+        }
+
+        # 2. Users and memberships
+        cursor.execute(
+            """
+            SELECT u.id, u.email, tm.role, tm.created_at, u.email_verified
+            FROM tenant_memberships tm
+            JOIN users u ON u.id = tm.user_id
+            WHERE tm.tenant_id = %s
+            ORDER BY tm.created_at
+            """,
+            (tenant_id,),
+        )
+        users = [
+            {
+                "id": str(r[0]),
+                "email": r[1],
+                "role": r[2],
+                "joined_at": str(r[3]),
+                "email_verified": bool(r[4]),
+            }
+            for r in cursor.fetchall()
+        ]
+
+        # 3. Documents
+        cursor.execute(
+            """
+            SELECT id, title, source_filename, doc_type, status, version, created_at
+            FROM documents WHERE tenant_id = %s ORDER BY created_at
+            """,
+            (tenant_id,),
+        )
+        documents = [
+            {
+                "id": str(r[0]),
+                "title": r[1],
+                "source_filename": r[2],
+                "doc_type": r[3],
+                "status": r[4],
+                "version": int(r[5]),
+                "created_at": str(r[6]),
+            }
+            for r in cursor.fetchall()
+        ]
+
+        # 4. Extractions
+        cursor.execute(
+            """
+            SELECT document_id, schema_type, schema_version, model, fields,
+                   field_confidence, overall_confidence, created_at
+            FROM document_extractions WHERE tenant_id = %s ORDER BY created_at
+            """,
+            (tenant_id,),
+        )
+        extractions = [
+            {
+                "document_id": str(r[0]),
+                "schema_type": r[1],
+                "schema_version": int(r[2]),
+                "model": r[3],
+                "fields": dict(r[4]) if r[4] is not None else {},
+                "field_confidence": dict(r[5]) if r[5] is not None else {},
+                "overall_confidence": float(r[6]),
+                "created_at": str(r[7]),
+            }
+            for r in cursor.fetchall()
+        ]
+
+        # 5. Conversations
+        cursor.execute(
+            """
+            SELECT id, title, created_at, updated_at
+            FROM conversations WHERE tenant_id = %s ORDER BY created_at
+            """,
+            (tenant_id,),
+        )
+        conv_rows = cursor.fetchall()
+        conversations = []
+        for c in conv_rows:
+            cid = c[0]
+            cursor.execute(
+                """
+                SELECT role, content, citations, created_at
+                FROM conversation_messages WHERE conversation_id = %s ORDER BY created_at
+                """,
+                (cid,),
+            )
+            msg_rows = cursor.fetchall()
+            conversations.append({
+                "id": str(cid),
+                "title": c[1],
+                "created_at": str(c[2]),
+                "updated_at": str(c[3]),
+                "messages": [
+                    {
+                        "role": m[0],
+                        "content": m[1],
+                        "citations": list(m[2]) if m[2] is not None else [],
+                        "created_at": str(m[3]),
+                    }
+                    for m in msg_rows
+                ],
+            })
+
+        # 6. API Keys (redacted)
+        cursor.execute(
+            "SELECT id, name, key_prefix, created_at, last_used_at, revoked FROM api_keys WHERE tenant_id = %s",
+            (tenant_id,),
+        )
+        api_keys = [
+            {
+                "id": str(r[0]),
+                "name": r[1],
+                "key_prefix": r[2],
+                "created_at": str(r[3]),
+                "last_used_at": str(r[4]) if r[4] else None,
+                "revoked": bool(r[5]),
+            }
+            for r in cursor.fetchall()
+        ]
+
+    return {
+        "tenant": tenant_data,
+        "users": users,
+        "documents": documents,
+        "extractions": extractions,
+        "conversations": conversations,
+        "api_keys": api_keys,
+        "export_metadata": {
+            "format_version": "1.0",
+            "gdpr_compliance": "Article 20 Data Portability",
+        },
+    }
 
 
 def delete_tenant(connection: Connection, tenant_id: UUID) -> list[str]:

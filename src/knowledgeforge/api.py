@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from io import BytesIO
 from time import perf_counter
-from typing import Annotated, BinaryIO, NoReturn
+from typing import Annotated, Any, BinaryIO, NoReturn
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 import psycopg
@@ -20,11 +20,12 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 
+from knowledgeforge.admin_ui import ADMIN_HTML
 from knowledgeforge.config import Settings, get_settings
 from knowledgeforge.conversations import (
     ConversationRow,
@@ -38,10 +39,12 @@ from knowledgeforge.conversations import (
 from knowledgeforge.db import get_connection
 from knowledgeforge.extraction.store import (
     DocumentExtractionRow,
+    correct_document_extraction,
     find_document_ids_by_fields,
     get_document_extraction,
     get_extraction_job,
     insert_extraction_job,
+    list_all_extractions_review_admin,
     list_extractions,
 )
 from knowledgeforge.generation.condense import rewrite_followup_question
@@ -64,6 +67,7 @@ from knowledgeforge.ingestion.store import (
     create_pending_document,
     delete_document,
     delete_tenant,
+    export_tenant_data,
     find_document_by_hash,
     find_latest_document_by_filename,
     get_document_detail,
@@ -95,7 +99,9 @@ from knowledgeforge.security.api_keys import create_api_key, list_api_keys, revo
 from knowledgeforge.security.auth import (
     accept_invitation,
     clear_auth_cookies,
+    consume_email_verification_token,
     create_access_token,
+    create_email_verification_token,
     create_invitation,
     ensure_owner_remaining,
     get_current_user,
@@ -107,10 +113,12 @@ from knowledgeforge.security.auth import (
     set_auth_cookies,
     verify_password,
 )
+from knowledgeforge.security.mailer import send_verification_email
 from knowledgeforge.security.budget import (
     estimate_token_cost,
     get_extraction_budget,
     get_platform_token_budget,
+    get_tenant_budget_limits,
     get_token_budget,
 )
 from knowledgeforge.security.refresh import (
@@ -120,6 +128,22 @@ from knowledgeforge.security.refresh import (
     rotate_refresh_token,
 )
 from knowledgeforge.worker.cloud import CloudStorageClient, PubSubPublisher
+from knowledgeforge.billing import (
+    CheckoutSessionRequest,
+    CheckoutSessionResponse,
+    CustomerPortalRequest,
+    CustomerPortalResponse,
+    SubscriptionResponse,
+    TenantBillingAdminView,
+    UpdateTenantTierRequest,
+    create_checkout_session,
+    create_portal_session,
+    get_tenant_billing_info,
+    list_tenants_billing_admin,
+    process_stripe_event,
+    update_tenant_tier_admin,
+    verify_stripe_signature,
+)
 
 logger = logging.getLogger("knowledgeforge.api")
 
@@ -424,6 +448,19 @@ class ApiKeyListedResponse(BaseModel):
     revoked: bool
 
 
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+class VerifyEmailResponse(BaseModel):
+    message: str
+    verified: bool
+
+
+class ResendVerificationRequest(BaseModel):
+    email: str
+
+
 @router.post("/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 def register(request: RegisterRequest, http_request: Request, response: Response) -> TokenResponse:
     settings = get_settings()
@@ -435,6 +472,7 @@ def register(request: RegisterRequest, http_request: Request, response: Response
         "auth",
         settings.auth_rate_limit_per_minute,
     )
+    verify_token = ""
     try:
         with get_connection() as connection:
             with connection.transaction():
@@ -448,8 +486,8 @@ def register(request: RegisterRequest, http_request: Request, response: Response
                         raise RuntimeError("tenant insert did not return an ID")
                     tenant_id = UUID(str(tenant_row[0]))
                     cursor.execute(
-                        "INSERT INTO users (tenant_id, email, hashed_password, is_platform_admin) "
-                        "VALUES (%s, %s, %s, FALSE) RETURNING id",
+                        "INSERT INTO users (tenant_id, email, hashed_password, is_platform_admin, email_verified) "
+                        "VALUES (%s, %s, %s, FALSE, FALSE) RETURNING id",
                         (tenant_id, request.email.lower(), hash_password(request.password)),
                     )
                     user_row = cursor.fetchone()
@@ -462,6 +500,8 @@ def register(request: RegisterRequest, http_request: Request, response: Response
                         "VALUES (%s, %s, 'owner')",
                         (tenant_id, user_id),
                     )
+                    # Create email verification token
+                    _, verify_token = create_email_verification_token(connection, user_id)
     except psycopg.errors.UniqueViolation as exc:
         raise HTTPException(status_code=409, detail="Email already registered") from exc
     except HTTPException:
@@ -476,6 +516,11 @@ def register(request: RegisterRequest, http_request: Request, response: Response
         refresh_token = create_refresh_token(connection, user_id)
     access_token = create_access_token(user_id, tenant_id, "owner", False)
     set_auth_cookies(response, access_token, refresh_token, settings)
+    if verify_token:
+        try:
+            send_verification_email(request.email.lower(), verify_token)
+        except Exception:
+            logger.warning("Failed to dispatch verification email to %s", request.email, exc_info=True)
     return TokenResponse(
         access_token=access_token, refresh_token=refresh_token
     )
@@ -554,6 +599,64 @@ def logout(
     with get_connection() as connection:
         revoke_refresh_family(connection, request.refresh_token)
     clear_auth_cookies(response, settings)
+
+
+@router.post("/auth/verify-email", response_model=VerifyEmailResponse)
+def verify_email_endpoint(request: VerifyEmailRequest) -> VerifyEmailResponse:
+    """Atomically consume an email verification token and mark user verified."""
+    with get_connection() as connection:
+        success, user_id, tenant_id = consume_email_verification_token(connection, request.token)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid, expired, or already-used verification token",
+        )
+
+    # Invalidate tenant budget cache so verified tier limits take effect immediately
+    if tenant_id:
+        from knowledgeforge.security.budget import invalidate_tenant_budget_cache
+        invalidate_tenant_budget_cache(tenant_id)
+
+    return VerifyEmailResponse(message="Email successfully verified", verified=True)
+
+
+@router.post("/auth/resend-verification")
+def resend_verification_endpoint(
+    request: ResendVerificationRequest,
+    http_request: Request,
+) -> dict:
+    """Resend verification email to an unverified user. Rate-limited per-IP and per-email."""
+    settings = get_settings()
+    email = request.email.lower().strip()
+
+    # Rate-limit per IP
+    limiter.check(
+        _client_subject(http_request, "resend_verification"),
+        "auth",
+        settings.email_verification_rate_limit_per_minute,
+        window_seconds=60,
+    )
+    # Rate-limit per email
+    limiter.check(
+        f"email:{email}",
+        "auth",
+        settings.email_verification_rate_limit_per_minute,
+        window_seconds=60,
+    )
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id, email_verified FROM users WHERE email = %s", (email,))
+            row = cursor.fetchone()
+
+        if row and not row[1]:
+            user_id = UUID(str(row[0]))
+            _, verify_token = create_email_verification_token(connection, user_id)
+            connection.commit()
+            send_verification_email(email, verify_token)
+
+    return {"message": "If the account exists and is unverified, a new verification link has been sent"}
 
 
 @router.get("/.well-known/jwks.json", tags=["auth"])
@@ -1399,6 +1502,8 @@ def extractions(
     vendor_name: Annotated[str | None, Query(max_length=300)] = None,
     invoice_number: Annotated[str | None, Query(max_length=200)] = None,
     currency: Annotated[str | None, Query(max_length=8)] = None,
+    counterparty: Annotated[str | None, Query(max_length=300)] = None,
+    governing_law: Annotated[str | None, Query(max_length=100)] = None,
     needs_review: bool | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -1411,6 +1516,8 @@ def extractions(
             "vendor_name": vendor_name,
             "invoice_number": invoice_number,
             "currency": currency,
+            "counterparty": counterparty,
+            "governing_law": governing_law,
         }.items()
         if value is not None
     }
@@ -1431,25 +1538,197 @@ def extractions(
     )
 
 
+class ExtractionCorrectionRequest(BaseModel):
+    corrected_fields: dict[str, Any]
+
+
+class ExtractionCorrectionResponse(BaseModel):
+    document_id: UUID
+    status: str
+    message: str
+
+
+class AdminDLQResponse(BaseModel):
+    ingestion_dlq_depth: int
+    extraction_dlq_depth: int
+    recent_failed_ingestions: list[dict[str, Any]]
+    recent_failed_extractions: list[dict[str, Any]]
+
+
 @router.get("/admin/extractions/review-queue", response_model=ExtractionListResponse)
 def extraction_review_queue(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    all_tenants: Annotated[bool, Query()] = False,
     current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
 ) -> ExtractionListResponse:
     """Low-confidence extractions (``needs_review = true``), newest first."""
+    is_admin = current_user[3] if len(current_user) > 3 else False
     with get_connection() as connection:
-        rows = list_extractions(
+        if is_admin and all_tenants:
+            raw_rows = list_all_extractions_review_admin(connection, limit=limit, offset=offset)
+            return ExtractionListResponse(
+                extractions=[
+                    ExtractionResponse(
+                        document_id=r["document_id"],
+                        schema_type=r["schema_type"],
+                        schema_version=r["schema_version"],
+                        model=r["model"],
+                        fields=r["fields"],
+                        field_confidence=r["field_confidence"],
+                        overall_confidence=r["overall_confidence"],
+                        needs_review=r["needs_review"],
+                        created_at=r["created_at"],
+                    )
+                    for r in raw_rows
+                ],
+                limit=limit,
+                offset=offset,
+            )
+        else:
+            rows = list_extractions(
+                connection,
+                current_user[1],
+                needs_review=True,
+                limit=limit,
+                offset=offset,
+            )
+            return ExtractionListResponse(
+                extractions=[_extraction_response(row) for row in rows],
+                limit=limit,
+                offset=offset,
+            )
+
+
+@router.post("/documents/{document_id}/extraction/correct", response_model=ExtractionCorrectionResponse)
+def correct_extraction_endpoint(
+    document_id: UUID,
+    body: ExtractionCorrectionRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> ExtractionCorrectionResponse:
+    """Submit human correction for an extraction while preserving model extraction history."""
+    user_id = current_user[0]
+    tenant_id = current_user[1]
+    with get_connection() as connection:
+        success = correct_document_extraction(
             connection,
-            current_user[1],
-            needs_review=True,
-            limit=limit,
-            offset=offset,
+            document_id=document_id,
+            corrected_fields=body.corrected_fields,
+            reviewed_by=user_id,
+            tenant_id=tenant_id,
         )
-    return ExtractionListResponse(
-        extractions=[_extraction_response(row) for row in rows],
-        limit=limit,
-        offset=offset,
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail="Document extraction not found for this tenant",
+        )
+    return ExtractionCorrectionResponse(
+        document_id=document_id,
+        status="corrected",
+        message="Extraction successfully corrected and review flag cleared",
+    )
+
+
+@router.put("/admin/extractions/{document_id}/correct", response_model=ExtractionCorrectionResponse)
+def admin_correct_extraction_endpoint(
+    document_id: UUID,
+    body: ExtractionCorrectionRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_platform_admin),
+) -> ExtractionCorrectionResponse:
+    """Submit human correction for an extraction across any tenant (Platform Admin only)."""
+    settings = get_settings()
+    if not settings.admin_console_enabled:
+        raise HTTPException(status_code=403, detail="Admin console is disabled")
+
+    user_id, _, _, _ = current_user
+    with get_connection() as connection:
+        success = correct_document_extraction(
+            connection,
+            document_id=document_id,
+            corrected_fields=body.corrected_fields,
+            reviewed_by=user_id,
+            tenant_id=None,
+        )
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail="Document extraction not found",
+        )
+    return ExtractionCorrectionResponse(
+        document_id=document_id,
+        status="corrected",
+        message="Extraction successfully corrected by platform admin",
+    )
+
+
+@router.get("/admin/dlq", response_model=AdminDLQResponse)
+def admin_dlq_inspect(
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_platform_admin),
+) -> AdminDLQResponse:
+    """Inspect dead letters and permanent processing failures (platform admin only)."""
+    settings = get_settings()
+    if not settings.admin_console_enabled:
+        raise HTTPException(status_code=403, detail="Admin console is disabled")
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            # Failed ingestions count and recent rows
+            cursor.execute("SELECT count(*) FROM failed_ingestions")
+            ingest_count = int(cursor.fetchone()[0])
+
+            cursor.execute(
+                """
+                SELECT f.id, f.tenant_id, t.name, f.filename, f.error_message, f.created_at
+                FROM failed_ingestions f
+                JOIN tenants t ON t.id = f.tenant_id
+                ORDER BY f.created_at DESC LIMIT %s
+                """,
+                (limit,),
+            )
+            ingest_rows = cursor.fetchall()
+
+            # Failed extractions count and recent rows
+            cursor.execute("SELECT count(*) FROM failed_extractions")
+            extract_count = int(cursor.fetchone()[0])
+
+            cursor.execute(
+                """
+                SELECT f.id, f.tenant_id, t.name, f.document_id, f.schema_type, f.error, f.created_at
+                FROM failed_extractions f
+                JOIN tenants t ON t.id = f.tenant_id
+                ORDER BY f.created_at DESC LIMIT %s
+                """,
+                (limit,),
+            )
+            extract_rows = cursor.fetchall()
+
+    return AdminDLQResponse(
+        ingestion_dlq_depth=ingest_count,
+        extraction_dlq_depth=extract_count,
+        recent_failed_ingestions=[
+            {
+                "id": str(r[0]),
+                "tenant_id": str(r[1]),
+                "tenant_name": str(r[2]),
+                "filename": str(r[3]),
+                "error": str(r[4]),
+                "created_at": str(r[5]),
+            }
+            for r in ingest_rows
+        ],
+        recent_failed_extractions=[
+            {
+                "id": str(r[0]),
+                "tenant_id": str(r[1]),
+                "tenant_name": str(r[2]),
+                "document_id": str(r[3]),
+                "schema_type": str(r[4]),
+                "error": str(r[5]),
+                "created_at": str(r[6]),
+            }
+            for r in extract_rows
+        ],
     )
 
 
@@ -1500,11 +1779,14 @@ def reprocess_extraction(
     # Per-tenant daily extraction budget check
     extraction_budget = get_extraction_budget()
     if extraction_budget is not None:
-        allowed, current_usage, _ = extraction_budget.check_and_reserve(str(current_user[1]), 1)
+        _, extraction_limit, _, _ = get_tenant_budget_limits(current_user[1])
+        allowed, current_usage, _ = extraction_budget.check_and_reserve(
+            str(current_user[1]), 1, limit=extraction_limit
+        )
         if not allowed:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Daily extraction budget exceeded: {current_usage}/{settings.daily_extraction_budget}",
+                detail=f"Daily extraction budget exceeded: {current_usage}/{extraction_limit}",
             )
     with get_connection() as connection:
         info = get_document_ingest_info(connection, document_id, current_user[1])
@@ -1806,11 +2088,14 @@ def ask(
     estimated = 0
     if token_budget is not None:
         estimated = estimate_token_cost(request.question)
-        allowed, current_usage, _ = token_budget.check_and_reserve(str(current_user[1]), estimated)
+        token_limit, _, tier, _ = get_tenant_budget_limits(current_user[1])
+        allowed, current_usage, _ = token_budget.check_and_reserve(
+            str(current_user[1]), estimated, limit=token_limit
+        )
         if not allowed:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Daily token budget exceeded: {current_usage}/{settings.daily_token_budget}",
+                detail=f"Daily token budget exceeded: {current_usage}/{token_limit}",
             )
         reserved = True
     if platform_budget is not None:
@@ -1912,11 +2197,14 @@ def ask_stream(
     estimated = 0
     if token_budget is not None:
         estimated = estimate_token_cost(request.question)
-        allowed, current_usage, _ = token_budget.check_and_reserve(str(current_user[1]), estimated)
+        token_limit, _, tier, _ = get_tenant_budget_limits(current_user[1])
+        allowed, current_usage, _ = token_budget.check_and_reserve(
+            str(current_user[1]), estimated, limit=token_limit
+        )
         if not allowed:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Daily token budget exceeded: {current_usage}/{settings.daily_token_budget}",
+                detail=f"Daily token budget exceeded: {current_usage}/{token_limit}",
             )
         reserved = True
     if platform_budget is not None:
@@ -2125,6 +2413,20 @@ def remove_document(
         CloudStorageClient(settings.gcs_bucket, settings.gcp_project_id).delete(storage_uri)
 
 
+@router.get("/auth/account/export")
+def export_account(
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> dict[str, Any]:
+    """Export complete machine-readable tenant data for GDPR Article 20 data portability.
+
+    Restricted to tenant owner. Returns tenant metadata, users, documents, extractions,
+    conversations, and redacted API keys.
+    """
+    _, tenant_id, _, _ = current_user
+    with get_connection() as connection:
+        return export_tenant_data(connection, tenant_id)
+
+
 @router.delete("/auth/account", status_code=status.HTTP_204_NO_CONTENT)
 def remove_account(current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user)) -> None:
     settings = get_settings()
@@ -2137,6 +2439,15 @@ def remove_account(current_user: tuple[UUID, UUID, str, bool] = Depends(get_curr
 
 
 # Admin console endpoints (platform admin only)
+
+@router.get("/admin", response_class=HTMLResponse)
+def admin_console_page() -> HTMLResponse:
+    """Serve the single-page admin console UI."""
+    settings = get_settings()
+    if not settings.admin_console_enabled:
+        raise HTTPException(status_code=403, detail="Admin console is disabled")
+    return HTMLResponse(content=ADMIN_HTML)
+
 
 @router.get("/admin/tenants", response_model=AdminTenantListResponse)
 def admin_list_tenants(
@@ -2193,3 +2504,171 @@ def admin_failed_ingestions(
         limit=limit,
         offset=offset,
     )
+
+
+# Billing and Subscription endpoints
+
+@router.post("/billing/webhook")
+async def stripe_webhook(request: Request) -> dict:
+    """Process Stripe webhook events with HMAC signature verification and atomic idempotency."""
+    settings = get_settings()
+    payload_bytes = await request.body()
+    sig_header = request.headers.get("stripe-signature", "")
+
+    # Verify signature if webhook secret is configured
+    if settings.stripe_webhook_secret:
+        valid = verify_stripe_signature(
+            payload_bytes,
+            sig_header,
+            settings.stripe_webhook_secret,
+        )
+        if not valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid Stripe signature",
+            )
+
+    try:
+        import json
+        event_data = json.loads(payload_bytes.decode("utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+
+    with get_connection() as connection:
+        result = process_stripe_event(connection, event_data)
+    return result
+
+
+@router.post("/billing/create-checkout-session", response_model=CheckoutSessionResponse)
+def checkout_session(
+    body: CheckoutSessionRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> CheckoutSessionResponse:
+    """Create a Stripe Checkout Session for upgrading tenant tier (tenant owner only)."""
+    _, tenant_id, _, _ = current_user
+    with get_connection() as connection:
+        info = get_tenant_billing_info(connection, tenant_id)
+    session_id, url = create_checkout_session(
+        tenant_id=str(tenant_id),
+        tier=body.tier,
+        success_url=body.success_url,
+        cancel_url=body.cancel_url,
+        customer_id=info.get("stripe_customer_id"),
+    )
+    return CheckoutSessionResponse(session_id=session_id, url=url)
+
+
+@router.post("/billing/create-portal-session", response_model=CustomerPortalResponse)
+def portal_session(
+    body: CustomerPortalRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> CustomerPortalResponse:
+    """Create a Stripe Customer Portal session (tenant owner only)."""
+    _, tenant_id, _, _ = current_user
+    with get_connection() as connection:
+        info = get_tenant_billing_info(connection, tenant_id)
+    customer_id = info.get("stripe_customer_id")
+    if not customer_id:
+        settings = get_settings()
+        if not settings.stripe_secret_key:
+            customer_id = f"cus_mock_{tenant_id.hex[:12]}"
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No active Stripe customer found for this tenant",
+            )
+    url = create_portal_session(customer_id, body.return_url)
+    return CustomerPortalResponse(url=url)
+
+
+@router.get("/billing/subscription", response_model=SubscriptionResponse)
+def get_subscription(
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> SubscriptionResponse:
+    """Get current tenant's subscription status, tier, usage, and budget limits."""
+    _, tenant_id, _, _ = current_user
+    with get_connection() as connection:
+        info = get_tenant_billing_info(connection, tenant_id)
+
+    token_budget = get_token_budget()
+    extraction_budget = get_extraction_budget()
+    token_usage = token_budget.get_usage(str(tenant_id))[0] if token_budget else 0
+    extract_usage = extraction_budget.get_usage(str(tenant_id))[0] if extraction_budget else 0
+
+    return SubscriptionResponse(
+        tenant_id=tenant_id,
+        tier=info["tier"],
+        subscription_status=info["subscription_status"],
+        current_period_end=info["current_period_end"],
+        stripe_customer_id=info["stripe_customer_id"],
+        stripe_subscription_id=info["stripe_subscription_id"],
+        daily_token_budget=info["daily_token_budget"],
+        daily_extraction_budget=info["daily_extraction_budget"],
+        current_token_usage=token_usage,
+        current_extraction_usage=extract_usage,
+        is_email_verified=info["is_email_verified"],
+        in_grace_period=info["in_grace_period"],
+    )
+
+
+@router.get("/admin/billing/tenants", response_model=list[TenantBillingAdminView])
+def admin_billing_tenants(
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_platform_admin),
+) -> list[TenantBillingAdminView]:
+    """List billing, tier, limits, and usage across all tenants (platform admin only)."""
+    settings = get_settings()
+    if not settings.admin_console_enabled:
+        raise HTTPException(status_code=403, detail="Admin console is disabled")
+
+    token_budget = get_token_budget()
+    extraction_budget = get_extraction_budget()
+
+    with get_connection() as connection:
+        tenants = list_tenants_billing_admin(connection)
+
+    views = []
+    for t in tenants:
+        tid_str = str(t["tenant_id"])
+        token_usage = token_budget.get_usage(tid_str)[0] if token_budget else 0
+        extract_usage = extraction_budget.get_usage(tid_str)[0] if extraction_budget else 0
+        views.append(
+            TenantBillingAdminView(
+                tenant_id=t["tenant_id"],
+                tenant_name=t["tenant_name"],
+                tier=t["tier"],
+                subscription_status=t["subscription_status"],
+                stripe_customer_id=t["stripe_customer_id"],
+                stripe_subscription_id=t["stripe_subscription_id"],
+                current_period_end=t["current_period_end"],
+                token_usage=token_usage,
+                extraction_usage=extract_usage,
+                token_limit=t["token_limit"],
+                extraction_limit=t["extraction_limit"],
+                is_email_verified=t["is_email_verified"],
+            )
+        )
+    return views
+
+
+@router.put("/admin/billing/tenants/{tenant_id}/tier")
+def admin_update_tenant_tier(
+    tenant_id: UUID,
+    body: UpdateTenantTierRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_platform_admin),
+) -> dict:
+    """Manually update a tenant's subscription tier (platform admin only)."""
+    settings = get_settings()
+    if not settings.admin_console_enabled:
+        raise HTTPException(status_code=403, detail="Admin console is disabled")
+
+    with get_connection() as connection:
+        updated = update_tenant_tier_admin(
+            connection,
+            tenant_id,
+            body.tier,
+            body.subscription_status,
+        )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return {"status": "updated", "tenant_id": str(tenant_id), "tier": body.tier}
+

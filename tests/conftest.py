@@ -11,6 +11,8 @@ def authenticated_test_client(monkeypatch):
     app.dependency_overrides[api.get_current_user] = lambda: (
         UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
         UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        "owner",
+        False,
     )
     monkeypatch.setattr(api, "record_request_log", lambda *args, **kwargs: None)
     monkeypatch.setattr(api, "count_documents", lambda *args, **kwargs: 0)

@@ -12,7 +12,7 @@ def _write_report(path, percent: float) -> None:
 
 def _prepare(monkeypatch, tmp_path, floor: str, percent: float):
     floor_file = tmp_path / "floor"
-    floor_file.write_text(floor, encoding="utf-8")
+    floor_file.write_text(f"{floor.strip()}\n", encoding="utf-8")
     monkeypatch.setattr(coverage_ratchet, "FLOOR_PATH", floor_file)
     report = tmp_path / "coverage.json"
     _write_report(report, percent)

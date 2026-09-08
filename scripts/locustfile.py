@@ -33,6 +33,7 @@ class KnowledgeForgeUser(HttpUser):
 
     def on_start(self) -> None:
         email = f"load-{uuid.uuid4()}@example.test"
+        self.email = email
         with self.client.post(
             "/auth/register",
             json={
@@ -52,13 +53,22 @@ class KnowledgeForgeUser(HttpUser):
     def _auth(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.token}"}
 
-    @task(8)
+    @task(6)
     def ask(self) -> None:
         self.client.post(
             "/ask",
             json={"question": random.choice(QUESTIONS)},
             headers=self._auth,
             name="/ask",
+        )
+
+    @task(3)
+    def ask_stream(self) -> None:
+        self.client.post(
+            "/ask/stream",
+            json={"question": random.choice(QUESTIONS)},
+            headers=self._auth,
+            name="/ask/stream",
         )
 
     @task(1)
@@ -74,3 +84,11 @@ class KnowledgeForgeUser(HttpUser):
     @task(1)
     def list_documents(self) -> None:
         self.client.get("/documents", headers=self._auth, name="/documents [list]")
+
+    @task(1)
+    def login_check(self) -> None:
+        self.client.post(
+            "/auth/login",
+            json={"email": self.email, "password": "load-test-password"},
+            name="/auth/login",
+        )

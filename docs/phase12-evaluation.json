@@ -1,0 +1,1296 @@
+{
+  "mode": "local",
+  "golden_set_size": 44,
+  "profiles": {
+    "baseline-500-100-vector": {
+      "hit_at_5": 0.125,
+      "hits": 5,
+      "retrieval_total": 40,
+      "answer_correctness": null,
+      "correct_answers": 0,
+      "graded_answers": 0,
+      "refusal_accuracy": null,
+      "correct_refusals": 0,
+      "refusal_graded": 0,
+      "refusal_total": 4,
+      "errors": [
+        {
+          "question": "What is the purpose of the KnowledgeForge system?",
+          "expected_source": "README.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What does the launch checklist require before production?",
+          "expected_source": "docs/launch-checklist.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/roadmap.md,docs/decisions.md"
+        },
+        {
+          "question": "What is currently deferred in validation?",
+          "expected_source": "docs/validation-status.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,src/knowledgeforge/api.py"
+        },
+        {
+          "question": "What are the phases after the original implementation?",
+          "expected_source": null,
+          "classification": "retrieval-miss",
+          "top_sources": "docs/architecture-review.md,docs/decisions.md,docs/decisions.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which settings control upload size and rate limits?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/validation-status.md,docs/validation-status.md,docs/validation-status.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "How does the token bucket limiter reject requests?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which fields are included in structured request logs?",
+          "expected_source": "src/knowledgeforge/observability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,docs/architecture-review.md,src/knowledgeforge/generation/prompt.py,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What reliability behavior is provided for external calls?",
+          "expected_source": "src/knowledgeforge/reliability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How are nearest chunks retrieved for a tenant?",
+          "expected_source": "src/knowledgeforge/retrieval/retrieve.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/migrations.md,docs/security-hardening.md,README.md,docs/roadmap.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How is the grounding prompt constructed?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How are generated citations parsed?",
+          "expected_source": "src/knowledgeforge/generation/generate.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,src/knowledgeforge/worker/processor.py,docs/architecture-review.md,docs/migrations.md"
+        },
+        {
+          "question": "How are local deterministic embeddings generated?",
+          "expected_source": "src/knowledgeforge/ingestion/embed.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/decisions.md,docs/validation-status.md,docs/validation-status.md"
+        },
+        {
+          "question": "How are ingestion jobs represented?",
+          "expected_source": "src/knowledgeforge/ingestion/jobs.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/architecture-review.md,docs/migrations.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How does the worker process a cloud ingestion job?",
+          "expected_source": "src/knowledgeforge/worker/pipeline.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/decisions.md,docs/architecture-review.md,docs/roadmap.md,docs/roadmap.md"
+        },
+        {
+          "question": "How are emulator cloud clients configured?",
+          "expected_source": "src/knowledgeforge/worker/cloud.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/validation-status.md,src/knowledgeforge/api.py,src/knowledgeforge/ingestion/store.py"
+        },
+        {
+          "question": "How is tenant identity validated in authentication?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/security-hardening.md,docs/architecture-review.md,docs/roadmap.md,README.md"
+        },
+        {
+          "question": "What must the model say when the context does not contain enough information?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How does the prompt defend against instructions hidden inside documents?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/roadmap.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "What happens to requests while the Gemini circuit breaker is open?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/roadmap.md,docs/decisions.md"
+        },
+        {
+          "question": "Which HTTP status is returned when a tenant exceeds its document quota?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/roadmap.md,docs/decisions.md,docs/validation-status.md,docs/migrations.md,docs/decisions.md"
+        },
+        {
+          "question": "Which HTTP status is returned when deleting a document that does not exist?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/roadmap.md,docs/architecture-review.md,docs/validation-status.md,docs/decisions.md,docs/decisions.md"
+        },
+        {
+          "question": "Which file types can be uploaded to the system?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/roadmap.md,docs/validation-status.md,docs/roadmap.md,docs/validation-status.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How long is the worker's claim lease on a processing document?",
+          "expected_source": "src/knowledgeforge/ingestion/store.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "Which migration adds the status_changed_at column to documents?",
+          "expected_source": "docs/migrations.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/roadmap.md,docs/architecture-review.md,docs/roadmap.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which memory store backs the shared token bucket rate limiter?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/decisions.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "What does the rate limiter do when Redis is unreachable?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What does startup validation refuse to run without outside development?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/roadmap.md,docs/decisions.md,docs/roadmap.md"
+        },
+        {
+          "question": "What is the default timeout for Gemini calls in seconds?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What does the worker do with a duplicate Pub/Sub delivery of the same job?",
+          "expected_source": "src/knowledgeforge/worker/processor.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/roadmap.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which fields does an access token carry?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/migrations.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/roadmap.md"
+        },
+        {
+          "question": "Which algorithm hashes user passwords?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/decisions.md,docs/migrations.md,docs/architecture-review.md,docs/validation-status.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What marks a new section when section-aware chunking is enabled?",
+          "expected_source": "src/knowledgeforge/ingestion/chunk.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/migrations.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which pytest markers separate integration and live tests?",
+          "expected_source": "pyproject.toml",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/validation-status.md,docs/validation-status.md,docs/migrations.md,docs/validation-status.md"
+        },
+        {
+          "question": "What does the roadmap identify as the first post-launch feature?",
+          "expected_source": "docs/roadmap.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/decisions.md,docs/validation-status.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "Which free PostgreSQL providers does the README suggest for deployment?",
+          "expected_source": "README.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md"
+        }
+      ]
+    },
+    "baseline-500-100-hybrid": {
+      "hit_at_5": 0.175,
+      "hits": 7,
+      "retrieval_total": 40,
+      "answer_correctness": null,
+      "correct_answers": 0,
+      "graded_answers": 0,
+      "refusal_accuracy": null,
+      "correct_refusals": 0,
+      "refusal_graded": 0,
+      "refusal_total": 4,
+      "errors": [
+        {
+          "question": "What is the purpose of the KnowledgeForge system?",
+          "expected_source": "README.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What does the launch checklist require before production?",
+          "expected_source": "docs/launch-checklist.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/roadmap.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What is currently deferred in validation?",
+          "expected_source": "docs/validation-status.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/roadmap.md"
+        },
+        {
+          "question": "What are the phases after the original implementation?",
+          "expected_source": null,
+          "classification": "retrieval-miss",
+          "top_sources": "docs/decisions.md,docs/decisions.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which settings control upload size and rate limits?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/validation-status.md,docs/decisions.md,docs/validation-status.md,docs/decisions.md"
+        },
+        {
+          "question": "How does the token bucket limiter reject requests?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/architecture-review.md,docs/roadmap.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which fields are included in structured request logs?",
+          "expected_source": "src/knowledgeforge/observability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,docs/architecture-review.md,src/knowledgeforge/generation/prompt.py,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "What reliability behavior is provided for external calls?",
+          "expected_source": "src/knowledgeforge/reliability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How are nearest chunks retrieved for a tenant?",
+          "expected_source": "src/knowledgeforge/retrieval/retrieve.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/migrations.md,docs/security-hardening.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "How is the grounding prompt constructed?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How are generated citations parsed?",
+          "expected_source": "src/knowledgeforge/generation/generate.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/architecture-review.md,docs/architecture-review.md,docs/migrations.md"
+        },
+        {
+          "question": "How are local deterministic embeddings generated?",
+          "expected_source": "src/knowledgeforge/ingestion/embed.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,docs/decisions.md,README.md,docs/validation-status.md,docs/validation-status.md"
+        },
+        {
+          "question": "How are ingestion jobs represented?",
+          "expected_source": "src/knowledgeforge/ingestion/jobs.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/architecture-review.md,docs/validation-status.md,docs/migrations.md"
+        },
+        {
+          "question": "How does the worker process a cloud ingestion job?",
+          "expected_source": "src/knowledgeforge/worker/pipeline.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/decisions.md,docs/roadmap.md,docs/roadmap.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How are emulator cloud clients configured?",
+          "expected_source": "src/knowledgeforge/worker/cloud.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/validation-status.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How is tenant identity validated in authentication?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/security-hardening.md,docs/architecture-review.md,docs/roadmap.md"
+        },
+        {
+          "question": "How does the prompt defend against instructions hidden inside documents?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/roadmap.md,docs/decisions.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What happens to requests while the Gemini circuit breaker is open?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/roadmap.md,docs/decisions.md"
+        },
+        {
+          "question": "Which HTTP status is returned when a tenant exceeds its document quota?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/roadmap.md,docs/decisions.md,docs/validation-status.md,docs/decisions.md,docs/migrations.md"
+        },
+        {
+          "question": "Which HTTP status is returned when deleting a document that does not exist?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/validation-status.md,docs/roadmap.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "Which file types can be uploaded to the system?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/roadmap.md,docs/validation-status.md,docs/roadmap.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How long is the worker's claim lease on a processing document?",
+          "expected_source": "src/knowledgeforge/ingestion/store.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/migrations.md"
+        },
+        {
+          "question": "Which memory store backs the shared token bucket rate limiter?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What does the rate limiter do when Redis is unreachable?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What does startup validation refuse to run without outside development?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/roadmap.md"
+        },
+        {
+          "question": "What is the default timeout for Gemini calls in seconds?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What does the worker do with a duplicate Pub/Sub delivery of the same job?",
+          "expected_source": "src/knowledgeforge/worker/processor.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/roadmap.md,docs/decisions.md,docs/decisions.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which fields does an access token carry?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/migrations.md,docs/decisions.md,docs/roadmap.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "Which algorithm hashes user passwords?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/migrations.md,docs/architecture-review.md,docs/roadmap.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "What marks a new section when section-aware chunking is enabled?",
+          "expected_source": "src/knowledgeforge/ingestion/chunk.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/migrations.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which pytest markers separate integration and live tests?",
+          "expected_source": "pyproject.toml",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/validation-status.md,docs/decisions.md,docs/validation-status.md,docs/validation-status.md,docs/decisions.md"
+        },
+        {
+          "question": "What does the roadmap identify as the first post-launch feature?",
+          "expected_source": "docs/roadmap.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md,docs/validation-status.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which free PostgreSQL providers does the README suggest for deployment?",
+          "expected_source": "README.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/decisions.md,docs/decisions.md,docs/architecture-review.md,docs/roadmap.md"
+        }
+      ]
+    },
+    "large-800-150-vector": {
+      "hit_at_5": 0.125,
+      "hits": 5,
+      "retrieval_total": 40,
+      "answer_correctness": null,
+      "correct_answers": 0,
+      "graded_answers": 0,
+      "refusal_accuracy": null,
+      "correct_refusals": 0,
+      "refusal_graded": 0,
+      "refusal_total": 4,
+      "errors": [
+        {
+          "question": "What is the purpose of the KnowledgeForge system?",
+          "expected_source": "README.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "What does the launch checklist require before production?",
+          "expected_source": "docs/launch-checklist.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md,docs/decisions.md"
+        },
+        {
+          "question": "What is currently deferred in validation?",
+          "expected_source": "docs/validation-status.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,src/knowledgeforge/ingestion/embed.py"
+        },
+        {
+          "question": "What are the phases after the original implementation?",
+          "expected_source": null,
+          "classification": "retrieval-miss",
+          "top_sources": "docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which settings control upload size and rate limits?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/validation-status.md,docs/validation-status.md,docs/decisions.md,docs/migrations.md,docs/decisions.md"
+        },
+        {
+          "question": "How does the token bucket limiter reject requests?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/roadmap.md"
+        },
+        {
+          "question": "Which fields are included in structured request logs?",
+          "expected_source": "src/knowledgeforge/observability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,src/knowledgeforge/generation/prompt.py,docs/architecture-review.md,docs/architecture-review.md,docs/migrations.md"
+        },
+        {
+          "question": "What reliability behavior is provided for external calls?",
+          "expected_source": "src/knowledgeforge/reliability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,src/knowledgeforge/ingestion/embed.py,src/knowledgeforge/retrieval/retrieve.py"
+        },
+        {
+          "question": "How are nearest chunks retrieved for a tenant?",
+          "expected_source": "src/knowledgeforge/retrieval/retrieve.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/migrations.md,docs/security-hardening.md,docs/architecture-review.md,docs/decisions.md,README.md"
+        },
+        {
+          "question": "How is the grounding prompt constructed?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How are generated citations parsed?",
+          "expected_source": "src/knowledgeforge/generation/generate.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,src/knowledgeforge/worker/processor.py,docs/migrations.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How are local deterministic embeddings generated?",
+          "expected_source": "src/knowledgeforge/ingestion/embed.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/validation-status.md,docs/decisions.md,docs/roadmap.md"
+        },
+        {
+          "question": "How are ingestion jobs represented?",
+          "expected_source": "src/knowledgeforge/ingestion/jobs.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/migrations.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "How does the worker process a cloud ingestion job?",
+          "expected_source": "src/knowledgeforge/worker/pipeline.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/decisions.md,docs/roadmap.md,docs/roadmap.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How are emulator cloud clients configured?",
+          "expected_source": "src/knowledgeforge/worker/cloud.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,src/knowledgeforge/api.py,docs/validation-status.md,src/knowledgeforge/ingestion/store.py"
+        },
+        {
+          "question": "How is tenant identity validated in authentication?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/security-hardening.md,README.md,docs/roadmap.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What must the model say when the context does not contain enough information?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md,docs/decisions.md"
+        },
+        {
+          "question": "How does the prompt defend against instructions hidden inside documents?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/roadmap.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What happens to requests while the Gemini circuit breaker is open?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/roadmap.md,docs/architecture-review.md,docs/roadmap.md,docs/decisions.md"
+        },
+        {
+          "question": "Which HTTP status is returned when a tenant exceeds its document quota?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/roadmap.md,docs/architecture-review.md,docs/decisions.md,docs/migrations.md,docs/decisions.md"
+        },
+        {
+          "question": "Which HTTP status is returned when deleting a document that does not exist?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/decisions.md,docs/roadmap.md,docs/migrations.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which file types can be uploaded to the system?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/roadmap.md,docs/roadmap.md,docs/architecture-review.md,docs/validation-status.md,docs/validation-status.md"
+        },
+        {
+          "question": "How long is the worker's claim lease on a processing document?",
+          "expected_source": "src/knowledgeforge/ingestion/store.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "Which migration adds the status_changed_at column to documents?",
+          "expected_source": "docs/migrations.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/roadmap.md,docs/roadmap.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which memory store backs the shared token bucket rate limiter?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/decisions.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "What does the rate limiter do when Redis is unreachable?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "What does startup validation refuse to run without outside development?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/roadmap.md,docs/roadmap.md,docs/decisions.md"
+        },
+        {
+          "question": "What is the default timeout for Gemini calls in seconds?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/roadmap.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What does the worker do with a duplicate Pub/Sub delivery of the same job?",
+          "expected_source": "src/knowledgeforge/worker/processor.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/decisions.md,docs/roadmap.md,docs/architecture-review.md,docs/roadmap.md"
+        },
+        {
+          "question": "Which fields does an access token carry?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/migrations.md,docs/decisions.md,docs/decisions.md,docs/architecture-review.md,docs/roadmap.md"
+        },
+        {
+          "question": "Which algorithm hashes user passwords?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/migrations.md,docs/decisions.md,docs/architecture-review.md,docs/validation-status.md,docs/decisions.md"
+        },
+        {
+          "question": "What marks a new section when section-aware chunking is enabled?",
+          "expected_source": "src/knowledgeforge/ingestion/chunk.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/migrations.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "Which pytest markers separate integration and live tests?",
+          "expected_source": "pyproject.toml",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/validation-status.md,docs/migrations.md,docs/decisions.md,docs/validation-status.md,docs/decisions.md"
+        },
+        {
+          "question": "What does the roadmap identify as the first post-launch feature?",
+          "expected_source": "docs/roadmap.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which free PostgreSQL providers does the README suggest for deployment?",
+          "expected_source": "README.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md"
+        }
+      ]
+    },
+    "large-800-150-hybrid": {
+      "hit_at_5": 0.175,
+      "hits": 7,
+      "retrieval_total": 40,
+      "answer_correctness": null,
+      "correct_answers": 0,
+      "graded_answers": 0,
+      "refusal_accuracy": null,
+      "correct_refusals": 0,
+      "refusal_graded": 0,
+      "refusal_total": 4,
+      "errors": [
+        {
+          "question": "What is the purpose of the KnowledgeForge system?",
+          "expected_source": "README.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "What does the launch checklist require before production?",
+          "expected_source": "docs/launch-checklist.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md,docs/validation-status.md"
+        },
+        {
+          "question": "What is currently deferred in validation?",
+          "expected_source": "docs/validation-status.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/roadmap.md"
+        },
+        {
+          "question": "What are the phases after the original implementation?",
+          "expected_source": null,
+          "classification": "retrieval-miss",
+          "top_sources": "docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which settings control upload size and rate limits?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/validation-status.md,docs/architecture-review.md,docs/decisions.md,docs/decisions.md,docs/validation-status.md"
+        },
+        {
+          "question": "How does the token bucket limiter reject requests?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/decisions.md,docs/roadmap.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which fields are included in structured request logs?",
+          "expected_source": "src/knowledgeforge/observability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,src/knowledgeforge/generation/prompt.py,docs/decisions.md,docs/architecture-review.md,docs/validation-status.md"
+        },
+        {
+          "question": "What reliability behavior is provided for external calls?",
+          "expected_source": "src/knowledgeforge/reliability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How are nearest chunks retrieved for a tenant?",
+          "expected_source": "src/knowledgeforge/retrieval/retrieve.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/migrations.md,docs/architecture-review.md,docs/decisions.md,docs/security-hardening.md,docs/decisions.md"
+        },
+        {
+          "question": "How is the grounding prompt constructed?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How are generated citations parsed?",
+          "expected_source": "src/knowledgeforge/generation/generate.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/architecture-review.md,docs/migrations.md,src/knowledgeforge/worker/processor.py"
+        },
+        {
+          "question": "How are local deterministic embeddings generated?",
+          "expected_source": "src/knowledgeforge/ingestion/embed.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,docs/validation-status.md,README.md,docs/decisions.md,docs/validation-status.md"
+        },
+        {
+          "question": "How are ingestion jobs represented?",
+          "expected_source": "src/knowledgeforge/ingestion/jobs.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/architecture-review.md,docs/migrations.md,docs/decisions.md"
+        },
+        {
+          "question": "How does the worker process a cloud ingestion job?",
+          "expected_source": "src/knowledgeforge/worker/pipeline.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/decisions.md,docs/roadmap.md,docs/roadmap.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How are emulator cloud clients configured?",
+          "expected_source": "src/knowledgeforge/worker/cloud.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/validation-status.md,docs/validation-status.md,docs/roadmap.md"
+        },
+        {
+          "question": "How is tenant identity validated in authentication?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/security-hardening.md,docs/architecture-review.md,docs/architecture-review.md,README.md"
+        },
+        {
+          "question": "How does the prompt defend against instructions hidden inside documents?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/roadmap.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What happens to requests while the Gemini circuit breaker is open?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/roadmap.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "Which HTTP status is returned when a tenant exceeds its document quota?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/roadmap.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which HTTP status is returned when deleting a document that does not exist?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md,docs/roadmap.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which file types can be uploaded to the system?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/roadmap.md,docs/validation-status.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How long is the worker's claim lease on a processing document?",
+          "expected_source": "src/knowledgeforge/ingestion/store.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "Which memory store backs the shared token bucket rate limiter?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What does the rate limiter do when Redis is unreachable?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What does startup validation refuse to run without outside development?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/roadmap.md,docs/decisions.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What is the default timeout for Gemini calls in seconds?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/roadmap.md"
+        },
+        {
+          "question": "What does the worker do with a duplicate Pub/Sub delivery of the same job?",
+          "expected_source": "src/knowledgeforge/worker/processor.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/decisions.md,docs/roadmap.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which fields does an access token carry?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/migrations.md,docs/decisions.md,docs/decisions.md,docs/architecture-review.md,docs/roadmap.md"
+        },
+        {
+          "question": "Which algorithm hashes user passwords?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/migrations.md,docs/architecture-review.md,docs/decisions.md,docs/roadmap.md,docs/validation-status.md"
+        },
+        {
+          "question": "What marks a new section when section-aware chunking is enabled?",
+          "expected_source": "src/knowledgeforge/ingestion/chunk.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/migrations.md,docs/architecture-review.md,docs/roadmap.md"
+        },
+        {
+          "question": "Which pytest markers separate integration and live tests?",
+          "expected_source": "pyproject.toml",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/validation-status.md,docs/decisions.md,docs/validation-status.md,docs/migrations.md,docs/decisions.md"
+        },
+        {
+          "question": "What does the roadmap identify as the first post-launch feature?",
+          "expected_source": "docs/roadmap.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "Which free PostgreSQL providers does the README suggest for deployment?",
+          "expected_source": "README.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/decisions.md,docs/decisions.md,docs/roadmap.md,docs/architecture-review.md"
+        }
+      ]
+    },
+    "section-aware-500-100-vector": {
+      "hit_at_5": 0.15,
+      "hits": 6,
+      "retrieval_total": 40,
+      "answer_correctness": null,
+      "correct_answers": 0,
+      "graded_answers": 0,
+      "refusal_accuracy": null,
+      "correct_refusals": 0,
+      "refusal_graded": 0,
+      "refusal_total": 4,
+      "errors": [
+        {
+          "question": "What is the purpose of the KnowledgeForge system?",
+          "expected_source": "README.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/roadmap.md,docs/architecture-review.md,docs/launch-checklist.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What does the launch checklist require before production?",
+          "expected_source": "docs/launch-checklist.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/roadmap.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How are database migrations handled?",
+          "expected_source": "docs/migrations.md",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/roadmap.md,docs/security-hardening.md,docs/validation-status.md"
+        },
+        {
+          "question": "What is currently deferred in validation?",
+          "expected_source": "docs/validation-status.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/launch-checklist.md,src/knowledgeforge/api.py,docs/architecture-review.md"
+        },
+        {
+          "question": "What are the phases after the original implementation?",
+          "expected_source": null,
+          "classification": "retrieval-miss",
+          "top_sources": "docs/roadmap.md,docs/roadmap.md,docs/architecture-review.md,docs/decisions.md,docs/decisions.md"
+        },
+        {
+          "question": "Which settings control upload size and rate limits?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/validation-status.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/decisions.md"
+        },
+        {
+          "question": "How does the token bucket limiter reject requests?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/architecture-review.md,docs/roadmap.md,docs/decisions.md,README.md"
+        },
+        {
+          "question": "Which fields are included in structured request logs?",
+          "expected_source": "src/knowledgeforge/observability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,src/knowledgeforge/generation/prompt.py,docs/architecture-review.md,docs/roadmap.md,src/knowledgeforge/config.py"
+        },
+        {
+          "question": "What reliability behavior is provided for external calls?",
+          "expected_source": "src/knowledgeforge/reliability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/launch-checklist.md,docs/decisions.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How are nearest chunks retrieved for a tenant?",
+          "expected_source": "src/knowledgeforge/retrieval/retrieve.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/migrations.md,README.md,docs/decisions.md,docs/security-hardening.md"
+        },
+        {
+          "question": "How is the grounding prompt constructed?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/launch-checklist.md,docs/roadmap.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How are generated citations parsed?",
+          "expected_source": "src/knowledgeforge/generation/generate.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/decisions.md,docs/launch-checklist.md,docs/security-hardening.md"
+        },
+        {
+          "question": "How are local deterministic embeddings generated?",
+          "expected_source": "src/knowledgeforge/ingestion/embed.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/decisions.md,docs/validation-status.md,docs/decisions.md"
+        },
+        {
+          "question": "How does text chunking preserve page information?",
+          "expected_source": "src/knowledgeforge/ingestion/chunk.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/architecture-review.md,docs/decisions.md,docs/decisions.md"
+        },
+        {
+          "question": "How are ingestion jobs represented?",
+          "expected_source": "src/knowledgeforge/ingestion/jobs.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/architecture-review.md,src/knowledgeforge/api.py,docs/architecture-review.md"
+        },
+        {
+          "question": "How does the worker process a cloud ingestion job?",
+          "expected_source": "src/knowledgeforge/worker/pipeline.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/roadmap.md,docs/roadmap.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How are emulator cloud clients configured?",
+          "expected_source": "src/knowledgeforge/worker/cloud.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "src/knowledgeforge/api.py,README.md,docs/validation-status.md,docs/security-hardening.md,docs/security-hardening.md"
+        },
+        {
+          "question": "How is tenant identity validated in authentication?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,README.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How does the prompt defend against instructions hidden inside documents?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/decisions.md,README.md,docs/roadmap.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What happens to requests while the Gemini circuit breaker is open?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/launch-checklist.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which HTTP status is returned when a tenant exceeds its document quota?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/roadmap.md,docs/decisions.md,docs/architecture-review.md,docs/validation-status.md"
+        },
+        {
+          "question": "Which HTTP status is returned when deleting a document that does not exist?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/roadmap.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which file types can be uploaded to the system?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/security-hardening.md,docs/validation-status.md,docs/roadmap.md,docs/roadmap.md"
+        },
+        {
+          "question": "How long is the worker's claim lease on a processing document?",
+          "expected_source": "src/knowledgeforge/ingestion/store.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md,docs/decisions.md"
+        },
+        {
+          "question": "Which migration adds the status_changed_at column to documents?",
+          "expected_source": "docs/migrations.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/roadmap.md,docs/roadmap.md,docs/decisions.md,docs/launch-checklist.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which memory store backs the shared token bucket rate limiter?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/decisions.md,docs/roadmap.md"
+        },
+        {
+          "question": "What does startup validation refuse to run without outside development?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/validation-status.md,docs/decisions.md,docs/decisions.md"
+        },
+        {
+          "question": "What is the default timeout for Gemini calls in seconds?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/launch-checklist.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What does the worker do with a duplicate Pub/Sub delivery of the same job?",
+          "expected_source": "src/knowledgeforge/worker/processor.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/roadmap.md,docs/roadmap.md,docs/decisions.md,docs/roadmap.md"
+        },
+        {
+          "question": "Which fields does an access token carry?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/decisions.md,docs/decisions.md,docs/migrations.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which algorithm hashes user passwords?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/decisions.md,docs/roadmap.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "What marks a new section when section-aware chunking is enabled?",
+          "expected_source": "src/knowledgeforge/ingestion/chunk.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which pytest markers separate integration and live tests?",
+          "expected_source": "pyproject.toml",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/validation-status.md,docs/decisions.md,docs/security-hardening.md,docs/decisions.md,docs/decisions.md"
+        },
+        {
+          "question": "Which free PostgreSQL providers does the README suggest for deployment?",
+          "expected_source": "README.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/decisions.md,docs/launch-checklist.md,docs/roadmap.md,docs/architecture-review.md"
+        }
+      ]
+    },
+    "section-aware-500-100-hybrid": {
+      "hit_at_5": 0.225,
+      "hits": 9,
+      "retrieval_total": 40,
+      "answer_correctness": null,
+      "correct_answers": 0,
+      "graded_answers": 0,
+      "refusal_accuracy": null,
+      "correct_refusals": 0,
+      "refusal_graded": 0,
+      "refusal_total": 4,
+      "errors": [
+        {
+          "question": "What is the purpose of the KnowledgeForge system?",
+          "expected_source": "README.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/roadmap.md,docs/architecture-review.md,docs/launch-checklist.md,docs/roadmap.md"
+        },
+        {
+          "question": "What is currently deferred in validation?",
+          "expected_source": "docs/validation-status.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/architecture-review.md,docs/launch-checklist.md,src/knowledgeforge/api.py,docs/architecture-review.md"
+        },
+        {
+          "question": "What are the phases after the original implementation?",
+          "expected_source": null,
+          "classification": "retrieval-miss",
+          "top_sources": "docs/roadmap.md,docs/roadmap.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which settings control upload size and rate limits?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/validation-status.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How does the token bucket limiter reject requests?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/roadmap.md,docs/architecture-review.md,docs/decisions.md,README.md"
+        },
+        {
+          "question": "Which fields are included in structured request logs?",
+          "expected_source": "src/knowledgeforge/observability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,src/knowledgeforge/generation/prompt.py,docs/roadmap.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What reliability behavior is provided for external calls?",
+          "expected_source": "src/knowledgeforge/reliability.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/launch-checklist.md,docs/decisions.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "How are nearest chunks retrieved for a tenant?",
+          "expected_source": "src/knowledgeforge/retrieval/retrieve.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/migrations.md,docs/decisions.md,docs/security-hardening.md,docs/decisions.md"
+        },
+        {
+          "question": "How is the grounding prompt constructed?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/launch-checklist.md,docs/architecture-review.md,docs/roadmap.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How are generated citations parsed?",
+          "expected_source": "src/knowledgeforge/generation/generate.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/decisions.md,docs/architecture-review.md,docs/launch-checklist.md"
+        },
+        {
+          "question": "How are local deterministic embeddings generated?",
+          "expected_source": "src/knowledgeforge/ingestion/embed.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/validation-status.md,docs/decisions.md,README.md,docs/validation-status.md"
+        },
+        {
+          "question": "How does text chunking preserve page information?",
+          "expected_source": "src/knowledgeforge/ingestion/chunk.py",
+          "classification": "reranking-candidate",
+          "top_sources": "README.md,docs/security-hardening.md,docs/architecture-review.md,docs/decisions.md,docs/decisions.md"
+        },
+        {
+          "question": "How are ingestion jobs represented?",
+          "expected_source": "src/knowledgeforge/ingestion/jobs.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/architecture-review.md,README.md,docs/security-hardening.md,src/knowledgeforge/api.py,docs/architecture-review.md"
+        },
+        {
+          "question": "How does the worker process a cloud ingestion job?",
+          "expected_source": "src/knowledgeforge/worker/pipeline.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/roadmap.md,docs/roadmap.md,docs/decisions.md,docs/migrations.md"
+        },
+        {
+          "question": "How are emulator cloud clients configured?",
+          "expected_source": "src/knowledgeforge/worker/cloud.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "src/knowledgeforge/api.py,docs/validation-status.md,docs/security-hardening.md,docs/validation-status.md,README.md"
+        },
+        {
+          "question": "How is tenant identity validated in authentication?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/architecture-review.md,README.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "How does the prompt defend against instructions hidden inside documents?",
+          "expected_source": "src/knowledgeforge/generation/prompt.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/decisions.md,docs/roadmap.md,docs/architecture-review.md,README.md"
+        },
+        {
+          "question": "What happens to requests while the Gemini circuit breaker is open?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/launch-checklist.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "Which HTTP status is returned when a tenant exceeds its document quota?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/roadmap.md,docs/decisions.md,docs/architecture-review.md,docs/roadmap.md"
+        },
+        {
+          "question": "Which HTTP status is returned when deleting a document that does not exist?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/decisions.md,docs/validation-status.md,docs/decisions.md,docs/roadmap.md"
+        },
+        {
+          "question": "Which file types can be uploaded to the system?",
+          "expected_source": "src/knowledgeforge/api.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/architecture-review.md,docs/security-hardening.md,docs/roadmap.md,docs/validation-status.md,docs/roadmap.md"
+        },
+        {
+          "question": "How long is the worker's claim lease on a processing document?",
+          "expected_source": "src/knowledgeforge/ingestion/store.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/architecture-review.md,docs/migrations.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which memory store backs the shared token bucket rate limiter?",
+          "expected_source": "src/knowledgeforge/limits.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/decisions.md,docs/architecture-review.md,docs/roadmap.md,docs/decisions.md"
+        },
+        {
+          "question": "What does startup validation refuse to run without outside development?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/security-hardening.md,README.md,docs/decisions.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What is the default timeout for Gemini calls in seconds?",
+          "expected_source": "src/knowledgeforge/config.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/launch-checklist.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md,docs/architecture-review.md"
+        },
+        {
+          "question": "What does the worker do with a duplicate Pub/Sub delivery of the same job?",
+          "expected_source": "src/knowledgeforge/worker/processor.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/roadmap.md,docs/roadmap.md,docs/roadmap.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which fields does an access token carry?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/decisions.md,docs/migrations.md,docs/decisions.md,docs/decisions.md,docs/architecture-review.md"
+        },
+        {
+          "question": "Which algorithm hashes user passwords?",
+          "expected_source": "src/knowledgeforge/security/auth.py",
+          "classification": "hybrid-search-candidate",
+          "top_sources": "docs/decisions.md,docs/roadmap.md,docs/migrations.md,docs/architecture-review.md,docs/decisions.md"
+        },
+        {
+          "question": "What marks a new section when section-aware chunking is enabled?",
+          "expected_source": "src/knowledgeforge/ingestion/chunk.py",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/architecture-review.md,docs/architecture-review.md,docs/decisions.md,docs/decisions.md"
+        },
+        {
+          "question": "Which pytest markers separate integration and live tests?",
+          "expected_source": "pyproject.toml",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/validation-status.md,docs/validation-status.md,docs/decisions.md,docs/validation-status.md,docs/security-hardening.md"
+        },
+        {
+          "question": "Which free PostgreSQL providers does the README suggest for deployment?",
+          "expected_source": "README.md",
+          "classification": "reranking-candidate",
+          "top_sources": "docs/decisions.md,docs/decisions.md,docs/roadmap.md,docs/launch-checklist.md,docs/architecture-review.md"
+        }
+      ]
+    }
+  }
+}

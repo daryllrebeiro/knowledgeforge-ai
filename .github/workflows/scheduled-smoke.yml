@@ -1,0 +1,24 @@
+name: Scheduled Staging E2E Smoke & Isolation Probe
+
+on:
+  schedule:
+    # Daily at 04:00 UTC
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  smoke-probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Run E2E Integration and Isolation Suite
+        env:
+          API_BASE_URL: ${{ vars.STAGING_SERVICE_URL || 'https://staging.api.knowledgeforge.ai' }}
+          SMOKE_TIMEOUT_SECONDS: "240"
+        run: |
+          echo "Executing E2E integration probe against $API_BASE_URL..."
+          python scripts/deploy_smoke_test.py "$API_BASE_URL"

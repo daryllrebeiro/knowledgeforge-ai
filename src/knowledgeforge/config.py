@@ -90,6 +90,18 @@ class Settings(BaseSettings):
     # Platform-wide daily token budget ceiling (enforced when Redis is configured).
     # This is a hard limit on total platform spend, independent of per-tenant budgets.
     platform_daily_token_budget: int = 10_000_000
+    # Stripe billing configuration
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_pro_price_id: str = ""
+    stripe_enterprise_price_id: str = ""
+    stripe_payment_grace_period_days: int = 3
+    # Transactional email provider configuration
+    email_provider: str = "console"  # "console", "postmark", "sendgrid"
+    email_from_address: str = "noreply@knowledgeforge.ai"
+    postmark_api_token: str = ""
+    sendgrid_api_key: str = ""
+    email_verification_rate_limit_per_minute: int = 5
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 
