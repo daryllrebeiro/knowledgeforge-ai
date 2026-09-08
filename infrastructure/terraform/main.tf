@@ -91,9 +91,26 @@ resource "google_storage_bucket" "uploads" {
   force_destroy               = false
 
   versioning { enabled = true }
+
+  # Retention alignment: purge non-current (superseded/deleted) object versions after 30 days
   lifecycle_rule {
-    condition { age = 30 }
-    action { type = "Delete" }
+    condition {
+      days_since_noncurrent_time = 30
+      with_state                 = "ARCHIVED"
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
+  # Abort incomplete multipart uploads after 7 days to eliminate orphaned storage costs
+  lifecycle_rule {
+    condition {
+      age = 7
+    }
+    action {
+      type = "AbortIncompleteMultipartUpload"
+    }
   }
 }
 
@@ -279,6 +296,18 @@ resource "google_secret_manager_secret_version" "database_url" {
   )
 }
 
+resource "google_secret_manager_secret" "redis_url" {
+  secret_id = "knowledgeforge-redis-url-${var.environment}"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "redis_url" {
+  secret      = google_secret_manager_secret.redis_url.id
+  secret_data = var.redis_url
+}
+
 # ---------------------------------------------------------------------------
 # IAM (R5.3/R5.4/R5.5)
 # ---------------------------------------------------------------------------
@@ -301,6 +330,12 @@ resource "google_secret_manager_secret_iam_member" "api_database_url" {
   member    = "serviceAccount:${google_service_account.api.email}"
 }
 
+resource "google_secret_manager_secret_iam_member" "api_redis_url" {
+  secret_id = google_secret_manager_secret.redis_url.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.api.email}"
+}
+
 resource "google_secret_manager_secret_iam_member" "worker_gemini" {
   secret_id = google_secret_manager_secret.gemini.id
   role      = "roles/secretmanager.secretAccessor"
@@ -309,6 +344,12 @@ resource "google_secret_manager_secret_iam_member" "worker_gemini" {
 
 resource "google_secret_manager_secret_iam_member" "worker_database_url" {
   secret_id = google_secret_manager_secret.database_url.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.worker.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "worker_redis_url" {
+  secret_id = google_secret_manager_secret.redis_url.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.worker.email}"
 }
@@ -326,10 +367,10 @@ resource "google_project_iam_member" "worker_cloudsql_client" {
   member  = "serviceAccount:${google_service_account.worker.email}"
 }
 
-# The worker reads and deletes raw objects in the uploads bucket.
-resource "google_storage_bucket_iam_member" "worker_object_admin" {
+# The worker reads and deletes raw objects in the uploads bucket (least privilege: objectUser).
+resource "google_storage_bucket_iam_member" "worker_object_user" {
   bucket = google_storage_bucket.uploads.name
-  role   = "roles/storage.objectAdmin"
+  role   = "roles/storage.objectUser"
   member = "serviceAccount:${google_service_account.worker.email}"
 }
 
@@ -421,8 +462,13 @@ resource "google_cloud_run_v2_service" "api" {
         value = local.worker_subscription
       }
       env {
-        name  = "REDIS_URL"
-        value = var.redis_url
+        name = "REDIS_URL"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.redis_url.secret_id
+            version = "latest"
+          }
+        }
       }
       env {
         name = "DATABASE_URL"
@@ -459,6 +505,7 @@ resource "google_cloud_run_v2_service" "api" {
     google_secret_manager_secret_iam_member.api_database_url,
     google_secret_manager_secret_iam_member.api_jwt,
     google_secret_manager_secret_iam_member.api_gemini,
+    google_secret_manager_secret_iam_member.api_redis_url,
     google_project_iam_member.api_cloudsql_client,
   ]
 }
@@ -529,6 +576,15 @@ resource "google_cloud_run_v2_service" "worker" {
         }
       }
       env {
+        name = "REDIS_URL"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.redis_url.secret_id
+            version = "latest"
+          }
+        }
+      }
+      env {
         name = "GEMINI_API_KEY"
         value_source {
           secret_key_ref {
@@ -544,8 +600,9 @@ resource "google_cloud_run_v2_service" "worker" {
     google_project_service.enabled,
     google_secret_manager_secret_iam_member.worker_database_url,
     google_secret_manager_secret_iam_member.worker_gemini,
+    google_secret_manager_secret_iam_member.worker_redis_url,
     google_project_iam_member.worker_cloudsql_client,
-    google_storage_bucket_iam_member.worker_object_admin,
+    google_storage_bucket_iam_member.worker_object_user,
   ]
 }
 
@@ -615,6 +672,15 @@ resource "google_cloud_run_v2_service" "extraction" {
         }
       }
       env {
+        name = "REDIS_URL"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.redis_url.secret_id
+            version = "latest"
+          }
+        }
+      }
+      env {
         name = "GEMINI_API_KEY"
         value_source {
           secret_key_ref {
@@ -630,8 +696,9 @@ resource "google_cloud_run_v2_service" "extraction" {
     google_project_service.enabled,
     google_secret_manager_secret_iam_member.extraction_database_url,
     google_secret_manager_secret_iam_member.extraction_gemini,
+    google_secret_manager_secret_iam_member.extraction_redis_url,
     google_project_iam_member.extraction_cloudsql_client,
-    google_storage_bucket_iam_member.extraction_object_admin,
+    google_storage_bucket_iam_member.extraction_object_user,
   ]
 }
 
@@ -718,9 +785,15 @@ resource "google_project_iam_member" "outbox_cloudsql_client" {
   member  = "serviceAccount:${google_service_account.outbox.email}"
 }
 
-resource "google_storage_bucket_iam_member" "extraction_object_admin" {
+resource "google_secret_manager_secret_iam_member" "extraction_redis_url" {
+  secret_id = google_secret_manager_secret.redis_url.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.extraction.email}"
+}
+
+resource "google_storage_bucket_iam_member" "extraction_object_user" {
   bucket = google_storage_bucket.uploads.name
-  role   = "roles/storage.objectAdmin"
+  role   = "roles/storage.objectUser"
   member = "serviceAccount:${google_service_account.extraction.email}"
 }
 
@@ -840,6 +913,85 @@ resource "google_monitoring_alert_policy" "dead_letter_depth" {
       aggregations {
         alignment_period   = "60s"
         per_series_aligner = "ALIGN_MAX"
+      }
+    }
+  }
+
+  notification_channels = [google_monitoring_notification_channel.email.id]
+}
+
+resource "google_monitoring_alert_policy" "extraction_dead_letter_depth" {
+  display_name = "KnowledgeForge extraction dead-letter queue non-empty (${var.environment})"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Extraction dead-letter subscription has undelivered messages"
+    condition_threshold {
+      filter          = <<-EOT
+        resource.type="pubsub_subscription"
+        AND resource.labels.subscription_id="${local.extraction_dlq_subscription}"
+        AND metric.type="pubsub.googleapis.com/subscription/num_undelivered_messages"
+      EOT
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "300s"
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_MAX"
+      }
+    }
+  }
+
+  notification_channels = [google_monitoring_notification_channel.email.id]
+}
+
+resource "google_monitoring_alert_policy" "worker_error_rate" {
+  display_name = "KnowledgeForge worker error rate (${var.environment})"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Worker 5xx rate above 2%"
+    condition_threshold {
+      filter          = <<-EOT
+        resource.type="cloud_run_revision"
+        AND resource.labels.service_name="${local.worker_service_name}"
+        AND metric.type="run.googleapis.com/request_count"
+        AND metric.labels.response_code_class="5xx"
+      EOT
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0.02
+      duration        = "300s"
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+    }
+  }
+
+  notification_channels = [google_monitoring_notification_channel.email.id]
+}
+
+resource "google_monitoring_alert_policy" "extraction_error_rate" {
+  display_name = "KnowledgeForge extraction worker error rate (${var.environment})"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Extraction worker 5xx rate above 2%"
+    condition_threshold {
+      filter          = <<-EOT
+        resource.type="cloud_run_revision"
+        AND resource.labels.service_name="${local.extraction_service_name}"
+        AND metric.type="run.googleapis.com/request_count"
+        AND metric.labels.response_code_class="5xx"
+      EOT
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0.02
+      duration        = "300s"
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
       }
     }
   }

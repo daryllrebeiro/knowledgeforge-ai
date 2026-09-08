@@ -118,12 +118,17 @@ def process_ingestion_job(job: IngestionJob, settings: Settings) -> None:
             # Check extraction budget before creating the job
             extraction_budget = get_extraction_budget()
             if extraction_budget is not None:
-                allowed, current_usage, _ = extraction_budget.check_and_reserve(str(job.tenant_id), 1)
+                from knowledgeforge.security.budget import get_tenant_budget_limits
+
+                _, extraction_limit, _, _ = get_tenant_budget_limits(
+                    job.tenant_id, connection=connection
+                )
+                allowed, current_usage, _ = extraction_budget.check_and_reserve(
+                    str(job.tenant_id), 1, limit=extraction_limit
+                )
                 if not allowed:
-                    from knowledgeforge.config import get_settings
-                    settings = get_settings()
                     raise ValueError(
-                        f"Daily extraction budget exceeded: {current_usage}/{settings.daily_extraction_budget}"
+                        f"Daily extraction budget exceeded: {current_usage}/{extraction_limit}"
                     )
             insert_extraction_job(
                 connection,

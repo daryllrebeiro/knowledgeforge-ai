@@ -18,13 +18,16 @@ from google.oauth2 import id_token  # type: ignore[import-untyped]
 from knowledgeforge.config import get_settings
 from knowledgeforge.extraction.jobs import parse_event
 from knowledgeforge.extraction.pipeline import process_extraction_job
+from knowledgeforge.observability import configure_logging
 
 logger = logging.getLogger("knowledgeforge.extraction.worker")
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    get_settings().validate_runtime()
+    settings = get_settings()
+    settings.validate_runtime()
+    configure_logging(settings.log_level)
     yield
 
 
@@ -60,7 +63,15 @@ async def consume(request: Request) -> dict[str, str]:
     event = parse_event(payload)
     started = time.monotonic()
     logger.info(
-        "extraction.job.start job_id=%s document_id=%s", event.job_id, event.document_id
+        "extraction.job.start job_id=%s document_id=%s",
+        event.job_id,
+        event.document_id,
+        extra={
+            "event": "extraction.job.start",
+            "job_id": str(event.job_id),
+            "document_id": str(event.document_id),
+            "tenant_id": str(event.tenant_id),
+        },
     )
     try:
         processed = process_extraction_job(event, settings)
@@ -71,6 +82,13 @@ async def consume(request: Request) -> dict[str, str]:
             event.job_id,
             duration_ms,
             exc,
+            extra={
+                "event": "extraction.job.failure",
+                "job_id": str(event.job_id),
+                "document_id": str(event.document_id),
+                "tenant_id": str(event.tenant_id),
+                "duration_ms": round(duration_ms, 2),
+            },
             exc_info=True,
         )
         raise
@@ -80,5 +98,13 @@ async def consume(request: Request) -> dict[str, str]:
         event.job_id,
         processed,
         duration_ms,
+        extra={
+            "event": "extraction.job.success",
+            "job_id": str(event.job_id),
+            "document_id": str(event.document_id),
+            "tenant_id": str(event.tenant_id),
+            "processed": processed,
+            "duration_ms": round(duration_ms, 2),
+        },
     )
     return {"status": "acknowledged"}

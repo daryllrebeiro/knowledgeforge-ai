@@ -9,13 +9,66 @@ from fastapi import Request
 logger = logging.getLogger("knowledgeforge.api")
 
 
+class JsonLogFormatter(logging.Formatter):
+    """Formats log records as JSON objects for Cloud Logging / centralized observability."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        msg = record.getMessage()
+        # If the message is already a serialized JSON object, enrich and return it
+        if msg.startswith("{") and msg.endswith("}"):
+            try:
+                payload = json.loads(msg)
+                payload.setdefault("timestamp", time.time())
+                payload.setdefault("level", record.levelname)
+                payload.setdefault("logger", record.name)
+                return json.dumps(payload)
+            except Exception:
+                pass
+
+        payload: dict[str, Any] = {
+            "timestamp": time.time(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": msg,
+        }
+        for attr in (
+            "request_id",
+            "tenant_id",
+            "document_id",
+            "job_id",
+            "route",
+            "status",
+            "latency_ms",
+            "duration_ms",
+            "event",
+        ):
+            val = getattr(record, attr, None)
+            if val is not None:
+                payload[attr] = str(val) if isinstance(val, UUID) else val
+
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload)
+
+
 def configure_logging(level: str = "INFO") -> None:
-    if not logger.handlers:
+    formatter = JsonLogFormatter()
+    for name in (
+        "knowledgeforge",
+        "knowledgeforge.api",
+        "knowledgeforge.worker",
+        "knowledgeforge.extraction",
+        "uvicorn",
+        "uvicorn.access",
+        "uvicorn.error",
+    ):
+        log = logging.getLogger(name)
+        log.handlers.clear()
         handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter("%(message)s"))
-        logger.addHandler(handler)
-    logger.setLevel(level.upper())
-    logger.propagate = False
+        handler.setFormatter(formatter)
+        log.addHandler(handler)
+        log.setLevel(level.upper())
+        log.propagate = False
 
 
 def request_id(request: Request) -> UUID:

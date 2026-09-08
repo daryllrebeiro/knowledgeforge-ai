@@ -75,6 +75,7 @@ class CircuitBreaker:
         """Mark a call successful; exposed for streaming, which ``call`` cannot wrap."""
         with self._lock:
             self.failures = 0
+            self.opened_at = None
 
     def record_failure(self) -> None:
         """Mark a call failed and open the circuit at the threshold."""

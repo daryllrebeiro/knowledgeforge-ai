@@ -44,7 +44,14 @@ variable "jwt_secret_key" {
 variable "redis_url" {
   type        = string
   default     = ""
-  description = "Optional shared Redis URL for cross-replica rate limiting."
+  sensitive   = true
+  description = "Shared Redis URL for cross-replica rate limiting, budget counters, and circuit breakers (stored in Secret Manager)."
+}
+
+variable "enable_memorystore" {
+  type        = bool
+  default     = false
+  description = "Whether to provision a Google Cloud Memorystore Redis instance."
 }
 
 variable "alert_email" {
@@ -58,6 +65,11 @@ variable "api_max_instances" {
 }
 
 variable "worker_max_instances" {
+  type    = number
+  default = 3
+}
+
+variable "extraction_max_instances" {
   type    = number
   default = 3
 }
