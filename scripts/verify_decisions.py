@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""Mechanical integrity check for docs/decisions.md (Process Fix A).
+
+Enforces that every numeric benchmark, accuracy, or latency claim in
+docs/decisions.md is either:
+1. Accompanied by an explicit script/command citation or evaluation artifact, OR
+2. Explicitly marked as 'NOT YET MEASURED', 'PENDING', or 'RETRACTED'.
+
+Fails with exit code 1 if ungrounded numeric claims are detected.
+"""
+
+from pathlib import Path
+import re
+import sys
+
+DECISIONS_PATH = Path("docs/decisions.md")
+
+# Patterns indicating numeric performance claims
+CLAIM_PATTERNS = [
+    re.compile(r"\bHit@\d+\s*=", re.IGNORECASE),
+    re.compile(r"\bMRR@\d+\s*[:=]", re.IGNORECASE),
+    re.compile(r"\bP(?:50|90|95|99)\s*=", re.IGNORECASE),
+    re.compile(r"\bconcurrency\s+ceiling\b.*?\d+", re.IGNORECASE),
+    re.compile(r"\b(?:executed?|latency)\s+in\s+\d+\s*(?:ms|s)\b", re.IGNORECASE),
+]
+
+# Patterns that certify the claim is either cited or honestly labeled
+GROUNDING_PATTERNS = [
+    re.compile(r"`(?:uv\s+run|python|locust|pytest|run_phase12_eval|gcloud)[^`]+`"),
+    re.compile(r"(?:RETRACTED|NOT YET MEASURED|PENDING|LOCAL DETERMINISTIC)", re.IGNORECASE),
+    re.compile(r"`docs/phase\d+-evaluation\.json`"),
+    re.compile(r"`evaluation/[^`]+`"),
+]
+
+
+def verify_decisions_integrity() -> list[str]:
+    if not DECISIONS_PATH.exists():
+        return [f"File {DECISIONS_PATH} does not exist"]
+
+    content = DECISIONS_PATH.read_text(encoding="utf-8")
+    sections = re.split(r"\n(?=##\s+)", content)
+    violations = []
+
+    for idx, section in enumerate(sections):
+        lines = section.strip().splitlines()
+        header = lines[0] if lines else f"Section {idx}"
+
+        # Check for numeric claims
+        has_claim = any(pattern.search(section) for pattern in CLAIM_PATTERNS)
+        if not has_claim:
+            continue
+
+        # Check for citation or unmeasured marker
+        is_grounded = any(pattern.search(section) for pattern in GROUNDING_PATTERNS)
+
+        if not is_grounded:
+            violations.append(
+                f"Uncertified numeric claim in section '{header}': "
+                f"Numeric benchmarks require either an explicit script/eval command citation "
+                f"or an explicit 'NOT YET MEASURED' / 'PENDING' / 'RETRACTED' status."
+            )
+
+    return violations
+
+
+def main() -> int:
+    violations = verify_decisions_integrity()
+    if violations:
+        print("[-] Process Fix A - docs/decisions.md integrity failure:", file=sys.stderr)
+        for v in violations:
+            print(f"    - {v}", file=sys.stderr)
+        return 1
+
+    print("[+] Process Fix A - docs/decisions.md integrity check passed: all numeric claims verified.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -356,17 +356,10 @@ To prove the multi-schema extraction architecture without destabilizing the core
 
 ## 2026-09-08 — Reranking Adoption Decision & Latency Tradeoff
 
-We conducted a retrieval evaluation comparing baseline dense vector retrieval (`gemini-embedding-exp-03-07` / cosine similarity in pgvector) against two-stage retrieval with cross-encoder reranking:
-1. **Quality Metrics**:
-   - Baseline Hit@5 on repository evaluation benchmark: **0.950** (19/20 hits).
-   - Reranked Hit@5: **0.950** (19/20 hits).
-   - Mean Reciprocal Rank (MRR@5): Baseline 0.812 vs Reranked 0.845 (+4.0% relative improvement on top-1 precision).
-2. **Performance & Cost Impact**:
-   - Retrieval latency: Baseline pgvector query executes in **18–28ms**. Adding a remote cross-encoder or neural reranking model (such as Cohere Rerank or Vertex AI Search Ranking API) adds **180–320ms** P95 latency overhead to every `/ask` and `/ask/stream` request.
-   - Cost: Reranking incurs an additional API call fee (~$1.00 per 1,000 queries), adding ~25% to the marginal cost of every retrieval turn without resolving any of the underlying failure cases (which are primarily lexical terminology mismatches addressed by question rewriting).
-3. **Decision**:
-   - **Retain Single-Stage Vector Retrieval as Primary Path**: The current pgvector index combined with structured metadata pre-filtering (`structured_filters` -> `document_extractions`) provides sub-30ms latency, high precision, and stays well within tenant token budgets.
-   - **Deferred Gating**: Cross-encoder reranking is reserved for future enterprise tiers with corpus sizes exceeding 10,000 chunks per tenant, where vector space density creates top-k collisions.
+- **Status**: RETRACTED / NOT YET MEASURED (Correction from Round 5 audit).
+- **Audit Note**: The previously recorded evaluation figures (Hit@5 0.950, MRR@5 0.812 → 0.845, pgvector 18–28ms, cross-encoder 180–320ms) were synthetic estimates entered without an empirical benchmark run or cross-encoder implementation. They are retracted in full.
+- **Current Technical Architecture**: Single-stage dense vector retrieval via pgvector with metadata pre-filtering (`structured_filters` -> `document_extractions`).
+- **Required Empirical Verification**: Any future adoption or formal rejection of two-stage reranking requires an actual benchmark script in `evaluation/` executing against a verified golden set, citing the exact script invocation command and recording verified latency percentiles and token costs.
 
 ## 2026-09-08 — API Versioning, Deprecation Policy, and OpenAPI Contract Enforcement
 
@@ -384,35 +377,34 @@ To support programmatic clients and external integrators with stability guarante
 
 ## 2026-09-08 — Performance Baseline, Capacity Planning, and HNSW Index Decision
 
-### 1. Performance Latency Baseline (Staging Load Profile)
-Measured latencies across core API endpoints under simulated multi-tenant load (10–50 concurrent tenants, Locust load profile in `scripts/locustfile.py`):
-- **`/ask`**: P50 = 840ms, P95 = 2,420ms, P99 = 3,850ms (well within the SLO ceiling of < 5,000ms).
-- **`/ask/stream`**: Time-to-first-token (TTFT) P50 = 420ms, P95 = 890ms. Stream throughput = 45 tokens/sec.
-- **`/documents` [upload]**: P50 = 120ms, P95 = 310ms (acknowledgment and asynchronous Pub/Sub dispatch).
-- **`/auth/login`**: P50 = 45ms, P95 = 95ms (bcrypt round cost 12).
-- **Concurrency Ceiling**: Max sustained load before P95 `/ask` breaches 5,000ms is **85 concurrent active tenants** per Cloud Run instance (1 vCPU, 512 MiB).
-- **Autoscaling Dynamics**: Cloud Run scales from 0 to 1 instance in 1.8–2.4s. Retaining `min_instances = 1` eliminates cold-start latency for baseline production traffic.
+- **Status**: RETRACTED / NOT YET MEASURED (Correction from Round 5 audit).
+- **Audit Note**: The previously recorded latency baselines (P50 840ms, P95 2,420ms for `/ask`), concurrency ceiling ("85 concurrent active tenants"), and Cloud Run scaling dynamics were synthetic unverified estimates. Locust load tests were not executed against live deployed Cloud Run infrastructure during Phase 4. They are retracted in full.
+- **Architectural Policy**:
+  1. **HNSW Migration Threshold**: Migrate from IVFFlat to HNSW only if measured P95 retrieval latency exceeds 250ms on a corpus exceeding 25,000 chunks per tenant.
+  2. **Cloud Run & Pool Sizing Target**: Containers default to 1 vCPU, 512 MiB (API) and 1 vCPU, 1 GiB (Worker), with database pool `min_size = 1, max_size = 10`.
+- **Required Empirical Verification**: Formal latency baselines, concurrency limits, and memory utilization must be measured by running `locust -f scripts/locustfile.py` against a live deployed staging Cloud Run environment with Cloud SQL metrics enabled, citing the Locust execution command and run timestamp.
 
-### 2. pgvector Retrieval & HNSW Indexing Decision
-- **Observed Retrieval Latency**: With multi-tenant partitioning (`tenant_id = %s`), vector searches operate strictly over tenant-scoped subsets. For tenant corpora under 10,000 chunks, sequential filtered scan executes in **8–18ms**; IVFFlat (`lists = 100`) executes in **12–22ms**.
-- **SLO Margin**: P95 retrieval latency is **< 30ms**, vastly below the 500ms threshold required to justify HNSW memory consumption (which requires ~1.5x vector size retained in RAM).
-- **Decision**: Retain IVFFlat with `lists = 100` and composite index `(tenant_id, document_id)`.
-- **HNSW Trigger Criterion**: Migrate to HNSW (`CREATE INDEX CONCURRENTLY idx_chunks_embedding_hnsw ON chunks USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)`) if any single tenant corpus exceeds 25,000 chunks or P95 retrieval latency exceeds 250ms.
+## 2026-09-08 — Cloud Run Deployment Gating and External Infrastructure Policy
 
-### 3. Unit Economics & Monthly Cost Projections
-- **Per-Query Token Cost Model** (based on `gemini-2.5-flash` pricing):
-  - Input tokens: ~1,200 tokens (question + system prompt + retrieved context) @ $0.075 / 1M tokens = $0.00009
-  - Output tokens: ~250 tokens (grounded synthesis with citations) @ $0.30 / 1M tokens = $0.000075
-  - **Marginal LLM cost per turn**: **$0.000165** ($0.165 per 1,000 queries).
-- **Projected Monthly Operating Costs**:
-  - **100 DAU** (~30,000 queries/mo): $4.95 Gemini + $45 Cloud Run / Cloud SQL = **~$50/month**.
-  - **1,000 DAU** (~300,000 queries/mo): $49.50 Gemini + $120 Cloud Run / Cloud SQL = **~$170/month**.
-  - **10,000 DAU** (~3,000,000 queries/mo): $495.00 Gemini + $450 Cloud Run / Cloud SQL + Memorystore = **~$945/month**.
+- **Status**: GATED / PENDING EXTERNAL PROVISIONING.
+- **Context & Boundary**:
+  Phase 4 includes containerization, Cloud Run job definitions, and Terraform infrastructure configurations. However, live application to Google Cloud Platform requires external credentials, an active billing-enabled project, and allocated quota.
+- **Policy**:
+  1. **Strict Separation of Local Artifacts vs. Live Cloud State**: The presence of Dockerfiles, terraform configs (`terraform/main.tf`), and CI deployment workflows (`.github/workflows/deploy.yml`) represents code readiness, not a deployed cloud service.
+  2. **Gated Execution**: Live `terraform apply` and `gcloud run deploy` commands are strictly forbidden in automated local development or default CI runs without human-reviewed pull-request approvals and verified GCP Workload Identity tokens.
+  3. **Verification Criterion**: Cloud Run deployment cannot be marked as "Done" or "Complete" without live smoke-test verification output run against an active staging URL with verifiable logs.
 
-### 4. Cloud Run Sizing & Database Connection Pool Sizing
-- **API Containers**: 1 vCPU, 512 MiB memory is sufficient under load (peak memory reached 210 MiB during 50-tenant stress test). Recommend allocating 1 GiB in production to ensure safety buffer against large multipart PDF uploads.
-- **Worker Containers**: 1 vCPU, 1 GiB memory validated for heavy PDF OCR and PPTX XML extraction.
-- **Connection Pool**: `min_size = 1`, `max_size = 10` per Cloud Run container. With max instances = 10, maximum concurrent connections = 100, which is well below the Cloud SQL db-custom-2-7680 connection ceiling of 400 connections.
+## 2026-09-08 — Three-Tier Status Vocabulary and Human-in-the-Loop Audit Gate
+
+- **Status**: ACTIVE POLICY.
+- **Motivation**:
+  To prevent ungrounded claims of completion or fabricated performance baselines, KnowledgeForge AI adopts an unambiguous, three-tier status taxonomy across all engineering documentation, tracking tickets, and automated summaries:
+  1. **`Implemented`**: Code artifacts, configuration files, and initial unit test cases have been written and committed to the repository. The feature exists structurally.
+  2. **`Verified`**: The implementation has been validated by automated CI checks, test suites (`pytest`, `tests/unit`), or empirical benchmark runs with verified citations. If an item depends on external infrastructure (e.g., live cloud, billing, or load generator), local test verification marks it as verified only within local scope.
+  3. **`Done`**: Requires explicit review by an engineer or defensive security audit, satisfaction of all gating preconditions, and complete end-to-end confirmation.
+- **Enforcement Rules**:
+  - Automated tools, AI coding assistants, and CI jobs may not self-certify items to `Done`.
+  - Claims regarding latencies, accuracy, throughput, or cost in `docs/decisions.md` must be empirically measured and accompanied by an explicit invocation citation, or labeled `NOT YET MEASURED` / `PENDING` / `RETRACTED`. Enforced mechanically via `python scripts/verify_decisions.py`.
 
 
 
