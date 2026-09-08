@@ -49,8 +49,9 @@ We share data with vetted third-party subprocessors strictly necessary to delive
 
 - **Customer Documents & Embeddings**: Retained until explicitly deleted by tenant users (`DELETE /documents/{id}`) or upon complete account removal (`DELETE /auth/account`).
 - **Account Removal**: When a tenant account is deleted, our database executes a hard cascade: all documents, chunks, pgvector embeddings, API keys, invitations, conversations, and GCS storage objects are deleted immediately and permanently.
+- **Cloud Storage Lifecycle**: In Google Cloud Storage (GCS), non-current and archived object versions are purged after 30 days via bucket lifecycle rules, while active customer objects remain until deleted by the tenant.
 - **Operational Logs**: Request logs (`request_logs`) are retained for operational diagnosis and billing reconciliation for 90 days, after which they are purged.
-- **Unverified Accounts**: User accounts that remain unverified past 30 days are purged automatically.
+- **Unverified Accounts**: User accounts that remain unverified past 30 days are purged automatically via `purge_unverified_accounts()`.
 
 ---
 

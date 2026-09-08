@@ -403,3 +403,25 @@ def accept_invitation(
             (tenant_id, user_id, role),
         )
     return invitation_id, tenant_id, role
+
+
+def purge_unverified_accounts(connection, max_age_days: int = 30) -> int:
+    """Purge user accounts that remain unverified past the retention window.
+
+    Enforces GDPR storage limitation by deleting stale unverified registrations.
+    Returns the number of purged users.
+    """
+    cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            DELETE FROM users
+            WHERE email_verified = false
+              AND created_at < %s
+            RETURNING id;
+            """,
+            (cutoff,),
+        )
+        rows = cursor.fetchall()
+        connection.commit()
+        return len(rows)

@@ -1,6 +1,6 @@
 """Unit tests for Item 12: GDPR Article 20 Data Portability Export."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
@@ -9,6 +9,7 @@ import pytest
 from knowledgeforge import api
 from knowledgeforge.ingestion.store import export_tenant_data
 from knowledgeforge.main import app
+from knowledgeforge.security.auth import purge_unverified_accounts
 
 
 class MockCursor:
@@ -51,7 +52,20 @@ class MockCursor:
             t_id = params[0]
             rows = []
             for d in self.db.documents.get(t_id, []):
-                rows.append((d["id"], d["title"], d["source_filename"], d["doc_type"], d["status"], d["version"], d["created_at"]))
+                rows.append((
+                    d["id"], d["title"], d["source_filename"],
+                    d.get("storage_uri", "gs://test-bucket/file.pdf"),
+                    d["doc_type"], d["status"], d["version"], d["created_at"]
+                ))
+            self._last_result = rows
+            return
+
+        # 3b. Chunks
+        if "FROM chunks c" in q:
+            t_id = params[0]
+            rows = []
+            for c in self.db.chunks.get(t_id, []):
+                rows.append((c["id"], c["document_id"], c["page"], c["section"], c["chunk_text"], c["created_at"]))
             self._last_result = rows
             return
 
@@ -94,6 +108,26 @@ class MockCursor:
             self._last_result = rows
             return
 
+        # 7. Billing events
+        if "FROM stripe_events" in q:
+            t_id = params[0]
+            rows = []
+            for b in self.db.billing_events.get(t_id, []):
+                rows.append((b["event_id"], b["event_type"], b.get("processed_at"), b["created_at"]))
+            self._last_result = rows
+            return
+
+        # 8. User purge
+        if "DELETE FROM users" in q and "email_verified = false" in q:
+            cutoff = params[0]
+            deleted = []
+            for uid, u in list(self.db.all_users.items()):
+                if not u.get("email_verified") and u.get("created_at") < cutoff:
+                    deleted.append((uid,))
+                    del self.db.all_users[uid]
+            self._last_result = deleted
+            return
+
         self._last_result = []
 
     def fetchone(self):
@@ -114,10 +148,13 @@ class MockDB:
         self.tenants = {}
         self.users = {}
         self.documents = {}
+        self.chunks = {}
         self.extractions = {}
         self.conversations = {}
         self.messages = {}
         self.api_keys = {}
+        self.billing_events = {}
+        self.all_users = {}
 
 
 class MockConnection:
@@ -128,6 +165,9 @@ class MockConnection:
         return self
 
     def __exit__(self, *args):
+        pass
+
+    def commit(self):
         pass
 
     def cursor(self):
@@ -161,9 +201,19 @@ def test_export_tenant_data_complete():
         "id": doc_id,
         "title": "Master Services Agreement",
         "source_filename": "msa.pdf",
+        "storage_uri": "gs://kf-docs/msa.pdf",
         "doc_type": "pdf",
         "status": "indexed",
         "version": 1,
+        "created_at": now,
+    }]
+    chunk_id = uuid4()
+    db.chunks[tenant_id] = [{
+        "id": chunk_id,
+        "document_id": doc_id,
+        "page": 1,
+        "section": "Section 1: Scope",
+        "chunk_text": "This Agreement governs the relationship...",
         "created_at": now,
     }]
     db.extractions[tenant_id] = [{
@@ -196,6 +246,12 @@ def test_export_tenant_data_complete():
         "last_used_at": now,
         "revoked": False,
     }]
+    db.billing_events[tenant_id] = [{
+        "event_id": "evt_test_123",
+        "event_type": "customer.subscription.created",
+        "processed_at": now,
+        "created_at": now,
+    }]
 
     conn = MockConnection(db)
     result = export_tenant_data(conn, tenant_id)
@@ -206,12 +262,54 @@ def test_export_tenant_data_complete():
     assert result["users"][0]["email"] == "owner@acme.com"
     assert len(result["documents"]) == 1
     assert result["documents"][0]["source_filename"] == "msa.pdf"
+    assert result["documents"][0]["storage_uri"] == "gs://kf-docs/msa.pdf"
+    assert len(result["chunks"]) == 1
+    assert result["chunks"][0]["chunk_text"] == "This Agreement governs the relationship..."
+    assert result["chunks"][0]["section"] == "Section 1: Scope"
     assert len(result["extractions"]) == 1
     assert result["extractions"][0]["schema_type"] == "contract"
     assert len(result["conversations"]) == 1
     assert result["conversations"][0]["messages"][0]["content"] == "What is the liability cap?"
     assert len(result["api_keys"]) == 1
     assert result["api_keys"][0]["key_prefix"] == "kf_live_1234"
+    assert len(result["billing_events"]) == 1
+    assert result["billing_events"][0]["event_id"] == "evt_test_123"
+    assert result["billing_events"][0]["event_type"] == "customer.subscription.created"
+
+
+def test_purge_unverified_accounts():
+    db = MockDB()
+    now = datetime.now(UTC)
+    stale_unverified = uuid4()
+    recent_unverified = uuid4()
+    verified_user = uuid4()
+
+    # User 1: unverified, created 45 days ago -> should be purged
+    db.all_users[stale_unverified] = {
+        "id": stale_unverified,
+        "email_verified": False,
+        "created_at": now - timedelta(days=45),
+    }
+    # User 2: unverified, created 5 days ago -> should be kept
+    db.all_users[recent_unverified] = {
+        "id": recent_unverified,
+        "email_verified": False,
+        "created_at": now - timedelta(days=5),
+    }
+    # User 3: verified, created 100 days ago -> should be kept
+    db.all_users[verified_user] = {
+        "id": verified_user,
+        "email_verified": True,
+        "created_at": now - timedelta(days=100),
+    }
+
+    conn = MockConnection(db)
+    purged_count = purge_unverified_accounts(conn, max_age_days=30)
+
+    assert purged_count == 1
+    assert stale_unverified not in db.all_users
+    assert recent_unverified in db.all_users
+    assert verified_user in db.all_users
 
 
 def test_export_tenant_data_nonexistent():

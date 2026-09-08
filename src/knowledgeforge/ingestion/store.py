@@ -451,7 +451,7 @@ def export_tenant_data(connection: Connection, tenant_id: UUID) -> dict[str, Any
         # 3. Documents
         cursor.execute(
             """
-            SELECT id, title, source_filename, doc_type, status, version, created_at
+            SELECT id, title, source_filename, storage_uri, doc_type, status, version, created_at
             FROM documents WHERE tenant_id = %s ORDER BY created_at
             """,
             (tenant_id,),
@@ -461,10 +461,34 @@ def export_tenant_data(connection: Connection, tenant_id: UUID) -> dict[str, Any
                 "id": str(r[0]),
                 "title": r[1],
                 "source_filename": r[2],
-                "doc_type": r[3],
-                "status": r[4],
-                "version": int(r[5]),
-                "created_at": str(r[6]),
+                "storage_uri": r[3],
+                "doc_type": r[4],
+                "status": r[5],
+                "version": int(r[6]),
+                "created_at": str(r[7]),
+            }
+            for r in cursor.fetchall()
+        ]
+
+        # 3b. Document chunks (content text and metadata)
+        cursor.execute(
+            """
+            SELECT c.id, c.document_id, c.page, c.section, c.chunk_text, c.created_at
+            FROM chunks c
+            JOIN documents d ON d.id = c.document_id
+            WHERE d.tenant_id = %s
+            ORDER BY c.document_id, c.created_at
+            """,
+            (tenant_id,),
+        )
+        chunks = [
+            {
+                "id": str(r[0]),
+                "document_id": str(r[1]),
+                "page": r[2],
+                "section": r[3],
+                "chunk_text": r[4],
+                "created_at": str(r[5]),
             }
             for r in cursor.fetchall()
         ]
@@ -545,16 +569,39 @@ def export_tenant_data(connection: Connection, tenant_id: UUID) -> dict[str, Any
             for r in cursor.fetchall()
         ]
 
+        # 7. Billing & subscription history
+        cursor.execute(
+            """
+            SELECT event_id, event_type, processed_at, created_at
+            FROM stripe_events
+            WHERE tenant_id = %s
+            ORDER BY created_at
+            """,
+            (tenant_id,),
+        )
+        billing_events = [
+            {
+                "event_id": str(r[0]),
+                "event_type": str(r[1]),
+                "processed_at": str(r[2]) if r[2] else None,
+                "created_at": str(r[3]),
+            }
+            for r in cursor.fetchall()
+        ]
+
     return {
         "tenant": tenant_data,
         "users": users,
         "documents": documents,
+        "chunks": chunks,
         "extractions": extractions,
         "conversations": conversations,
         "api_keys": api_keys,
+        "billing_events": billing_events,
         "export_metadata": {
-            "format_version": "1.0",
+            "format_version": "2.0",
             "gdpr_compliance": "Article 20 Data Portability",
+            "storage_access": "Direct storage references included; download via GET /documents/{id}/download",
         },
     }
 
