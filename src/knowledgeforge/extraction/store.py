@@ -7,7 +7,9 @@ from uuid import UUID
 from psycopg import Connection
 from psycopg.types.json import Json
 
-from knowledgeforge.extraction.schemas import InvoiceExtraction
+from pydantic import BaseModel
+
+from knowledgeforge.extraction.schemas import ContractExtraction, InvoiceExtraction
 
 ACTIVE_JOB_FILTER = "status IN ('queued', 'processing')"
 
@@ -308,7 +310,7 @@ def store_document_extraction(
     schema_type: str,
     schema_version: int,
     model: str,
-    extraction: InvoiceExtraction,
+    extraction: InvoiceExtraction | ContractExtraction | BaseModel | dict[str, Any],
     field_confidence: dict[str, float],
     overall_confidence: float,
     needs_review: bool,
@@ -322,6 +324,7 @@ def store_document_extraction(
     first, and this upsert is the replace-after-validation semantics a forced
     reprocess needs.
     """
+    fields_payload = extraction.model_dump(mode="json") if hasattr(extraction, "model_dump") else extraction
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -348,7 +351,7 @@ def store_document_extraction(
                 schema_type,
                 schema_version,
                 model,
-                Json(extraction.model_dump(mode="json")),
+                Json(fields_payload),
                 Json(field_confidence),
                 overall_confidence,
                 needs_review,
@@ -408,7 +411,13 @@ def get_document_extraction(
 
 # JSONB field filters are allow-listed and parameterized; arbitrary query keys
 # can never reach the SQL.
-EXTRACTION_FIELD_FILTERS = ("vendor_name", "invoice_number", "currency")
+EXTRACTION_FIELD_FILTERS = (
+    "vendor_name",
+    "invoice_number",
+    "currency",
+    "counterparty",
+    "governing_law",
+)
 
 
 def list_extractions(
@@ -505,3 +514,125 @@ def get_document_storage_uri(
         )
         row = cursor.fetchone()
     return None if row is None or row[0] is None else str(row[0])
+
+
+def list_all_extractions_review_admin(
+    connection: Connection,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    """List low-confidence extractions across all tenants for platform admin review."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT e.document_id, e.tenant_id, t.name, e.schema_type, e.schema_version,
+                   e.model, e.fields, e.field_confidence, e.overall_confidence,
+                   e.needs_review, e.created_at, e.extraction_history
+            FROM document_extractions e
+            JOIN tenants t ON t.id = e.tenant_id
+            WHERE e.needs_review = true
+            ORDER BY e.created_at DESC
+            LIMIT %s OFFSET %s
+            """,
+            (limit, offset),
+        )
+        rows = cursor.fetchall()
+
+    results: list[dict[str, Any]] = []
+    for r in rows:
+        results.append({
+            "document_id": UUID(str(r[0])),
+            "tenant_id": UUID(str(r[1])),
+            "tenant_name": str(r[2]),
+            "schema_type": str(r[3]),
+            "schema_version": int(r[4]),
+            "model": str(r[5]),
+            "fields": dict(r[6]) if r[6] is not None else {},
+            "field_confidence": dict(r[7]) if r[7] is not None else {},
+            "overall_confidence": float(r[8]),
+            "needs_review": bool(r[9]),
+            "created_at": str(r[10]),
+            "extraction_history": list(r[11]) if r[11] is not None else [],
+        })
+    return results
+
+
+def correct_document_extraction(
+    connection: Connection,
+    *,
+    document_id: UUID,
+    corrected_fields: dict[str, Any],
+    reviewed_by: UUID,
+    tenant_id: UUID | None = None,
+) -> bool:
+    """Save human corrections to an extraction while preserving the full model history in JSONB.
+
+    Sets needs_review = false and overall_confidence = 1.0.
+    """
+    from datetime import UTC, datetime
+
+    with connection.cursor() as cursor:
+        # 1. Fetch current extraction
+        query = (
+            "SELECT fields, field_confidence, overall_confidence, extraction_history "
+            "FROM document_extractions WHERE document_id = %s"
+        )
+        params: list[object] = [document_id]
+        if tenant_id is not None:
+            query += " AND tenant_id = %s"
+            params.append(tenant_id)
+
+        cursor.execute(query, tuple(params))
+        row = cursor.fetchone()
+        if not row:
+            return False
+
+        current_fields = dict(row[0]) if row[0] is not None else {}
+        current_field_confidence = dict(row[1]) if row[1] is not None else {}
+        current_overall_conf = float(row[2])
+        current_history = list(row[3]) if row[3] is not None else []
+
+        # 2. Append history record
+        history_entry = {
+            "corrected_at": datetime.now(UTC).isoformat(),
+            "reviewed_by": str(reviewed_by),
+            "previous_fields": current_fields,
+            "previous_overall_confidence": current_overall_conf,
+            "previous_field_confidence": current_field_confidence,
+            "corrected_fields": corrected_fields,
+        }
+        updated_history = current_history + [history_entry]
+
+        # 3. Merge fields and set confidence to 1.0 for corrected fields
+        merged_fields = {**current_fields, **corrected_fields}
+        merged_confidence = {**current_field_confidence}
+        for k in corrected_fields:
+            merged_confidence[k] = 1.0
+
+        update_query = """
+            UPDATE document_extractions
+            SET fields = %s,
+                field_confidence = %s,
+                overall_confidence = 1.0,
+                needs_review = false,
+                reviewed_by = %s,
+                reviewed_at = now(),
+                extraction_history = %s
+            WHERE document_id = %s
+        """
+        update_params: list[object] = [
+            Json(merged_fields),
+            Json(merged_confidence),
+            reviewed_by,
+            Json(updated_history),
+            document_id,
+        ]
+        if tenant_id is not None:
+            update_query += " AND tenant_id = %s"
+            update_params.append(tenant_id)
+
+        cursor.execute(update_query, tuple(update_params))
+        connection.commit()
+        return True
+

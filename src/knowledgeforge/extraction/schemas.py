@@ -47,6 +47,25 @@ class ExtractionWithConfidence(BaseModel):
     field_confidence: dict[str, float] = Field(default_factory=dict)
 
 
+class ContractExtraction(BaseModel):
+    """The contract field set for commercial agreements (MSA, NDA, SOW, SaaS agreements)."""
+
+    counterparty: str = Field(min_length=1, max_length=300)
+    effective_date: date | None = None
+    termination_date: date | None = None
+    total_value: float | None = Field(default=None, ge=0)
+    currency: str = Field(default="USD", min_length=3, max_length=8)
+    governing_law: str | None = Field(default=None, max_length=100)
+    auto_renew: bool = False
+
+
+class ContractExtractionWithConfidence(BaseModel):
+    """Structured provider output for contract extraction."""
+
+    contract: ContractExtraction
+    field_confidence: dict[str, float] = Field(default_factory=dict)
+
+
 def render_fields(fields: dict[str, Any]) -> str:
     """Render extracted fields as ``key: value`` lines for the ask prompt."""
     lines: list[str] = []

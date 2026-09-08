@@ -14,7 +14,7 @@ import logging
 from io import BytesIO
 from uuid import uuid4
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from knowledgeforge.config import Settings
 from knowledgeforge.db import get_connection
@@ -25,7 +25,10 @@ from knowledgeforge.extraction.classifier import (
 )
 from knowledgeforge.extraction.jobs import ExtractionEvent
 from knowledgeforge.extraction.provider import build_provider
-from knowledgeforge.extraction.schemas import ExtractionWithConfidence
+from knowledgeforge.extraction.schemas import (
+    ContractExtractionWithConfidence,
+    ExtractionWithConfidence,
+)
 from knowledgeforge.extraction.store import (
     claim_extraction_job,
     finish_extraction_job,
@@ -131,12 +134,17 @@ def _classify(
     return classification.doc_type, classification.confidence
 
 
-def _parse_fields(raw_output: str) -> ExtractionWithConfidence:
+def _parse_fields(
+    raw_output: str, schema_type: str = "invoice"
+) -> ExtractionWithConfidence | ContractExtractionWithConfidence:
     try:
         data = json.loads(raw_output)
     except ValueError as exc:
         raise ExtractionFailed(f"model output is not valid JSON: {exc}") from exc
-    return ExtractionWithConfidence.model_validate(data)
+    if schema_type == "contract":
+        return ContractExtractionWithConfidence.model_validate(data)
+    else:
+        return ExtractionWithConfidence.model_validate(data)
 
 
 def _extract_fields(
@@ -145,7 +153,9 @@ def _extract_fields(
     filename: str,
     text: str,
     settings: Settings,
-) -> ExtractionWithConfidence:
+    *,
+    schema_type: str = "invoice",
+) -> ExtractionWithConfidence | ContractExtractionWithConfidence:
     provider = build_provider(settings)
     lowered = filename.lower()
     # Scans/images have no text layer: extraction runs over the original bytes
@@ -155,18 +165,20 @@ def _extract_fields(
     for attempt in range(2):  # one bounded retry on invalid output
         retry = attempt > 0
         if needs_multimodal:
-            result = provider.extract_document(content, _mime_type(filename), retry=retry)
+            result = provider.extract_document(
+                content, _mime_type(filename), schema_type=schema_type, retry=retry
+            )
         else:
-            result = provider.extract(text, retry=retry)
+            result = provider.extract(text, schema_type=schema_type, retry=retry)
         _record_telemetry(
             event.tenant_id, "extract", result.input_tokens, result.output_tokens, settings
         )
         try:
-            return _parse_fields(result.raw_output)
+            return _parse_fields(result.raw_output, schema_type=schema_type)
         except (ValidationError, ExtractionFailed) as exc:
             errors.append(str(exc))
     raise ExtractionFailed(
-        "model output failed invoice validation after retry: " + "; ".join(errors[-2:])
+        f"model output failed {schema_type} validation after retry: " + "; ".join(errors[-2:])
     )
 
 
@@ -243,30 +255,33 @@ def _run_extraction(event: ExtractionEvent, settings: Settings) -> None:
         set_document_classification(
             connection, event.document_id, event.tenant_id, doc_type, confidence
         )
-    if doc_type != "invoice":
-        # Most of a tenant's corpus is not invoices; that is expected, not an
-        # error state.
+    if doc_type not in {"invoice", "contract"}:
+        # Most of a tenant's corpus is neither invoices nor contracts; expected no-op.
         finish_extraction_job(
             connection, event.job_id, "skipped", "unsupported_document_type"
         )
         return
 
-    parsed = _extract_fields(event, content, filename, text, settings)
+    schema_type = doc_type
+    parsed = _extract_fields(
+        event, content, filename, text, settings, schema_type=schema_type
+    )
     confidence_values = list(parsed.field_confidence.values())
     overall = min(confidence_values) if confidence_values else 1.0
     needs_review = overall < settings.extraction_overall_confidence_threshold or any(
         value < settings.extraction_field_confidence_threshold for value in confidence_values
     )
+    extracted_model = parsed.contract if schema_type == "contract" else parsed.invoice
     with get_connection() as connection:
         store_document_extraction(
             connection,
             tenant_id=event.tenant_id,
             document_id=event.document_id,
             content_hash=event.content_hash,
-            schema_type=event.schema_type,
+            schema_type=schema_type,
             schema_version=event.schema_version,
             model=event.model,
-            extraction=parsed.invoice,
+            extraction=extracted_model,
             field_confidence=parsed.field_confidence,
             overall_confidence=overall,
             needs_review=needs_review,
@@ -275,8 +290,9 @@ def _run_extraction(event: ExtractionEvent, settings: Settings) -> None:
         )
         finish_extraction_job(connection, event.job_id, "succeeded", None)
     logger.info(
-        "extraction.succeeded document_id=%s overall_confidence=%.3f needs_review=%s",
+        "extraction.succeeded document_id=%s schema_type=%s overall_confidence=%.3f needs_review=%s",
         event.document_id,
+        schema_type,
         overall,
         needs_review,
     )

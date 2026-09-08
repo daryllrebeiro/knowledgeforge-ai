@@ -1,0 +1,265 @@
+{
+  "schema_type": "contract",
+  "documents": [
+    {
+      "document": "contract-01-saas-msa",
+      "text": "MASTER SERVICES AGREEMENT\nThis Master Services Agreement is entered into on 2026-01-01 (the 'Effective Date') by and between CloudCore Technologies Inc. ('Provider') and Acme Corporation ('Customer'). This agreement terminates on 2027-01-01 unless extended. Total contract value is 120000.00 USD. Governing law shall be the State of Delaware. This agreement will automatically renew for successive one-year terms.",
+      "expected": {
+        "counterparty": "Acme Corporation",
+        "effective_date": "2026-01-01",
+        "termination_date": "2027-01-01",
+        "total_value": 120000.0,
+        "currency": "USD",
+        "governing_law": "Delaware",
+        "auto_renew": true
+      }
+    },
+    {
+      "document": "contract-02-nda-mutual",
+      "text": "MUTUAL NON-DISCLOSURE AGREEMENT\nEffective Date: 2026-02-15.\nParties: Vertex AI Labs Inc. and Nexus Dynamics LLC.\nTermination Date: 2028-02-15.\nGoverning Law: State of California.\nTotal Consideration: 0.00 USD. Auto-renew: false.",
+      "expected": {
+        "counterparty": "Nexus Dynamics LLC",
+        "effective_date": "2026-02-15",
+        "termination_date": "2028-02-15",
+        "total_value": 0.0,
+        "currency": "USD",
+        "governing_law": "California",
+        "auto_renew": false
+      }
+    },
+    {
+      "document": "contract-03-vendor-sow",
+      "text": "STATEMENT OF WORK SOW-2026-9\nPursuant to Master Services Agreement dated 2026-03-01.\nVendor: Global Logistics Corp. Client: Retail Giants PLC.\nEffective: 2026-03-01. Completion: 2026-09-30.\nTotal Fee: 45000.00 USD.\nGoverning Law: New York.\nAuto renewal: No.",
+      "expected": {
+        "counterparty": "Retail Giants PLC",
+        "effective_date": "2026-03-01",
+        "termination_date": "2026-09-30",
+        "total_value": 45000.0,
+        "currency": "USD",
+        "governing_law": "New York",
+        "auto_renew": false
+      }
+    },
+    {
+      "document": "contract-04-consulting-agreement",
+      "text": "CONSULTING SERVICES AGREEMENT\nBetween Strategy Partners Ltd and Zenith Media Corp.\nEffective Date: 2026-04-10.\nEnd Date: 2026-10-10.\nTotal Compensation: 75000.00 USD.\nJurisdiction: England and Wales.\nAuto Renew: false.",
+      "expected": {
+        "counterparty": "Zenith Media Corp",
+        "effective_date": "2026-04-10",
+        "termination_date": "2026-10-10",
+        "total_value": 75000.0,
+        "currency": "USD",
+        "governing_law": "England and Wales",
+        "auto_renew": false
+      }
+    },
+    {
+      "document": "contract-05-license-agreement-eur",
+      "text": "SOFTWARE LICENSE AGREEMENT\nLicensor: Quantum Soft GmbH. Licensee: Deutsche Automobil AG.\nEffective: 2026-05-01. Valid through: 2029-04-30.\nAnnual License Fee: 250000.00 EUR.\nGoverning Law: Germany.\nAgreement automatically renews annually.",
+      "expected": {
+        "counterparty": "Deutsche Automobil AG",
+        "effective_date": "2026-05-01",
+        "termination_date": "2029-04-30",
+        "total_value": 250000.0,
+        "currency": "EUR",
+        "governing_law": "Germany",
+        "auto_renew": true
+      }
+    },
+    {
+      "document": "contract-06-cloud-hosting",
+      "text": "HOSTING SERVICE LEVEL AGREEMENT\nEffective: 2026-06-01.\nCustomer: OmniData Corp. Provider: CloudScale Networks.\nTermination: 2027-05-31.\nTotal Minimum Spend: 60000.00 USD.\nGoverning Law: Texas.\nAutomatic Renewal: true.",
+      "expected": {
+        "counterparty": "OmniData Corp",
+        "effective_date": "2026-06-01",
+        "termination_date": "2027-05-31",
+        "total_value": 60000.0,
+        "currency": "USD",
+        "governing_law": "Texas",
+        "auto_renew": true
+      }
+    },
+    {
+      "document": "contract-07-data-processing-dpa",
+      "text": "DATA PROCESSING AGREEMENT (DPA)\nEffective Date: 2026-01-15.\nData Controller: FinTech Innovations Inc. Data Processor: SecureVault Systems.\nTerm: Co-terminus with Principal Agreement.\nTotal Fee: null.\nGoverning Law: Ireland.\nAuto renew: false.",
+      "expected": {
+        "counterparty": "SecureVault Systems",
+        "effective_date": "2026-01-15",
+        "termination_date": null,
+        "total_value": null,
+        "currency": "USD",
+        "governing_law": "Ireland",
+        "auto_renew": false
+      }
+    },
+    {
+      "document": "contract-08-marketing-services",
+      "text": "MARKETING AGENCY SERVICES CONTRACT\nParties: Apex Brands Inc. and Creative Pulse Agency.\nEffective: 2026-07-01 to 2026-12-31.\nRetainer Total: 30000.00 USD.\nGoverning Law: Illinois.\nAuto-renewal: false.",
+      "expected": {
+        "counterparty": "Creative Pulse Agency",
+        "effective_date": "2026-07-01",
+        "termination_date": "2026-12-31",
+        "total_value": 30000.0,
+        "currency": "USD",
+        "governing_law": "Illinois",
+        "auto_renew": false
+      }
+    },
+    {
+      "document": "contract-09-equipment-lease",
+      "text": "EQUIPMENT LEASE CONTRACT\nLessor: Heavy Machinery Rentals Ltd. Lessee: Builders United Corp.\nEffective Date: 2026-03-15.\nTermination Date: 2027-03-14.\nTotal Lease Value: 84000.00 USD.\nGoverning Law: Ohio.\nAuto renews: false.",
+      "expected": {
+        "counterparty": "Builders United Corp",
+        "effective_date": "2026-03-15",
+        "termination_date": "2027-03-14",
+        "total_value": 84000.0,
+        "currency": "USD",
+        "governing_law": "Ohio",
+        "auto_renew": false
+      }
+    },
+    {
+      "document": "contract-10-office-sublease",
+      "text": "COMMERCIAL REAL ESTATE SUBLEASE AGREEMENT\nEffective: 2026-08-01.\nSublessor: Workspace Ventures Inc. Sublessee: Stealth AI Startup LLC.\nTermination Date: 2028-07-31.\nTotal Value: 192000.00 USD.\nGoverning Law: Washington.\nAutomatic Renewal: false.",
+      "expected": {
+        "counterparty": "Stealth AI Startup LLC",
+        "effective_date": "2026-08-01",
+        "termination_date": "2028-07-31",
+        "total_value": 192000.0,
+        "currency": "USD",
+        "governing_law": "Washington",
+        "auto_renew": false
+      }
+    },
+    {
+      "document": "contract-11-security-audit",
+      "text": "CYBERSECURITY ASSESSMENT AGREEMENT\nCustomer: HealthPulse Solutions. Assessor: RedTeam Defense LLC.\nEffective Date: 2026-09-01.\nCompletion Date: 2026-11-30.\nFixed Fee: 55000.00 USD.\nGoverning Law: Massachusetts.\nAuto renew: false.",
+      "expected": {
+        "counterparty": "RedTeam Defense LLC",
+        "effective_date": "2026-09-01",
+        "termination_date": "2026-11-30",
+        "total_value": 55000.0,
+        "currency": "USD",
+        "governing_law": "Massachusetts",
+        "auto_renew": false
+      }
+    },
+    {
+      "document": "contract-12-api-partnership",
+      "text": "API INTEGRATION & PARTNERSHIP AGREEMENT\nEffective: 2026-02-01. Counterparty: OpenBanking Gateway Ltd.\nTermination Date: 2029-01-31.\nAnnual Commitment: 150000.00 USD.\nGoverning Law: Delaware.\nAuto renewal: true.",
+      "expected": {
+        "counterparty": "OpenBanking Gateway Ltd",
+        "effective_date": "2026-02-01",
+        "termination_date": "2029-01-31",
+        "total_value": 150000.0,
+        "currency": "USD",
+        "governing_law": "Delaware",
+        "auto_renew": true
+      }
+    },
+    {
+      "document": "contract-13-talent-recruitment",
+      "text": "RECRUITING SERVICES CONTRACT\nBetween Global Recruiters Inc and HyperGrowth Tech.\nEffective: 2026-04-01.\nTerm: 12 months (terminates 2027-03-31).\nEstimated Value: 40000.00 USD.\nJurisdiction: New York.\nAuto renew: false.",
+      "expected": {
+        "counterparty": "HyperGrowth Tech",
+        "effective_date": "2026-04-01",
+        "termination_date": "2027-03-31",
+        "total_value": 40000.0,
+        "currency": "USD",
+        "governing_law": "New York",
+        "auto_renew": false
+      }
+    },
+    {
+      "document": "contract-14-logistics-distribution",
+      "text": "DISTRIBUTION SERVICES AGREEMENT\nSupplier: Prime Goods Corp. Distributor: EuroTrans Logistics NV.\nEffective: 2026-05-15.\nTermination: 2028-05-14.\nTotal Contract Value: 500000.00 EUR.\nGoverning Law: Netherlands.\nAutomatic Renewal: true.",
+      "expected": {
+        "counterparty": "EuroTrans Logistics NV",
+        "effective_date": "2026-05-15",
+        "termination_date": "2028-05-14",
+        "total_value": 500000.0,
+        "currency": "EUR",
+        "governing_law": "Netherlands",
+        "auto_renew": true
+      }
+    },
+    {
+      "document": "contract-15-content-licensing",
+      "text": "DIGITAL CONTENT LICENSE AGREEMENT\nLicensor: VisualArts Media Inc. Licensee: StreamNow Entertainment.\nEffective: 2026-06-15.\nTermination: 2027-06-14.\nTotal Fee: 95000.00 USD.\nGoverning Law: California.\nAuto renew: false.",
+      "expected": {
+        "counterparty": "StreamNow Entertainment",
+        "effective_date": "2026-06-15",
+        "termination_date": "2027-06-14",
+        "total_value": 95000.0,
+        "currency": "USD",
+        "governing_law": "California",
+        "auto_renew": false
+      }
+    },
+    {
+      "document": "contract-16-it-support",
+      "text": "MANAGED IT SERVICES AGREEMENT\nProvider: NetOps Solutions Corp. Customer: City Legal Group LLP.\nEffective: 2026-07-15.\nEnd Date: 2028-07-14.\nTotal Value: 72000.00 USD.\nGoverning Law: Delaware.\nAuto renews: true.",
+      "expected": {
+        "counterparty": "City Legal Group LLP",
+        "effective_date": "2026-07-15",
+        "termination_date": "2028-07-14",
+        "total_value": 72000.0,
+        "currency": "USD",
+        "governing_law": "Delaware",
+        "auto_renew": true
+      }
+    },
+    {
+      "document": "contract-17-facilities-cleaning",
+      "text": "FACILITIES MAINTENANCE CONTRACT\nContractor: CleanFacilities Inc. Client: Metro Properties.\nEffective: 2026-08-15.\nExpires: 2027-08-14.\nContract Value: 28000.00 USD.\nGoverning Law: New Jersey.\nAuto renew: false.",
+      "expected": {
+        "counterparty": "Metro Properties",
+        "effective_date": "2026-08-15",
+        "termination_date": "2027-08-14",
+        "total_value": 28000.0,
+        "currency": "USD",
+        "governing_law": "New Jersey",
+        "auto_renew": false
+      }
+    },
+    {
+      "document": "contract-18-telecom-services",
+      "text": "TELECOMMUNICATIONS ENTERPRISE AGREEMENT\nEffective Date: 2026-09-15.\nParties: FiberLink Networks and Unified Systems Ltd.\nTermination Date: 2029-09-14.\nTotal Value: 180000.00 USD.\nGoverning Law: Virginia.\nAuto renewal: true.",
+      "expected": {
+        "counterparty": "Unified Systems Ltd",
+        "effective_date": "2026-09-15",
+        "termination_date": "2029-09-14",
+        "total_value": 180000.0,
+        "currency": "USD",
+        "governing_law": "Virginia",
+        "auto_renew": true
+      }
+    },
+    {
+      "document": "contract-19-independent-contractor",
+      "text": "INDEPENDENT CONTRACTOR AGREEMENT\nEffective: 2026-10-01.\nCompany: NextGen BioLabs Inc. Contractor: Alex Mercer Consulting LLC.\nTermination: 2027-03-31.\nTotal Value: 35000.00 USD.\nGoverning Law: Colorado.\nAuto renew: false.",
+      "expected": {
+        "counterparty": "Alex Mercer Consulting LLC",
+        "effective_date": "2026-10-01",
+        "termination_date": "2027-03-31",
+        "total_value": 35000.0,
+        "currency": "USD",
+        "governing_law": "Colorado",
+        "auto_renew": false
+      }
+    },
+    {
+      "document": "contract-20-hardware-procurement",
+      "text": "HARDWARE PURCHASE AND SUPPLY AGREEMENT\nSupplier: Silicon Edge Technologies. Buyer: DataForge Systems.\nEffective Date: 2026-11-01.\nTermination Date: 2027-10-31.\nTotal Agreement Value: 340000.00 USD.\nGoverning Law: Delaware.\nAuto-renew: false.",
+      "expected": {
+        "counterparty": "DataForge Systems",
+        "effective_date": "2026-11-01",
+        "termination_date": "2027-10-31",
+        "total_value": 340000.0,
+        "currency": "USD",
+        "governing_law": "Delaware",
+        "auto_renew": false
+      }
+    }
+  ]
+}
