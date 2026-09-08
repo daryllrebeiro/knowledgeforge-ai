@@ -42,3 +42,20 @@ jobs:
           scan-ref: .
           scanners: vuln,secret,misconfig
           ignore-unfixed: true
+
+  container-image-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build local container image
+        run: docker build -t knowledgeforge-ai:scan-target -f Dockerfile .
+      - name: Scan container image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: knowledgeforge-ai:scan-target
+          scan-type: image
+          scanners: vuln,misconfig
+          severity: CRITICAL,HIGH
+          exit-code: 0
+          ignore-unfixed: true
+

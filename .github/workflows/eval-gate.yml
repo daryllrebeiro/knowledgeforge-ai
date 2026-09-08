@@ -7,8 +7,10 @@ name: Eval regression gate
 #   uv run python -m evaluation.check_thresholds --update <reference.json>
 
 on:
+  pull_request:
+    branches: [main, "release/**", "releases/**"]
   push:
-    branches: ["release/**", "releases/**"]
+    branches: [main, "release/**", "releases/**"]
   workflow_dispatch:
 
 permissions:

@@ -27,6 +27,7 @@ jobs:
           gcloud builds submit --tag "${{ vars.ARTIFACT_REGISTRY }}/knowledgeforge-api:${{ github.sha }}" .
           gcloud builds submit --tag "${{ vars.ARTIFACT_REGISTRY }}/knowledgeforge-worker:${{ github.sha }}" -f infrastructure/Dockerfile.worker .
       - name: Terraform apply
+        id: terraform_apply
         working-directory: infrastructure/terraform
         env:
           TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
@@ -37,3 +38,15 @@ jobs:
         run: |
           terraform init
           terraform apply -auto-approve
+
+      - name: Automated Staging Smoke Test Gate
+        if: inputs.environment == 'staging'
+        env:
+          SERVICE_URL: ${{ vars.STAGING_SERVICE_URL }}
+        run: |
+          if [ -n "$SERVICE_URL" ]; then
+            python scripts/deploy_smoke_test.py "$SERVICE_URL"
+          else
+            echo "STAGING_SERVICE_URL not set; skipping remote smoke test"
+          fi
+
