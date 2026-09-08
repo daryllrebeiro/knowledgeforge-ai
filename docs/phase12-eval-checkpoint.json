@@ -1,7 +1,5 @@
 {
-  "mode": "local",
-  "golden_set_size": 44,
-  "profiles": {
+  "completed_profiles": {
     "baseline-500-100-vector": {
       "hit_at_5": 0.2,
       "hits": 8,
@@ -1202,5 +1200,8 @@
         }
       ]
     }
-  }
+  },
+  "total_spend_usd": 0.0,
+  "total_tokens_used": 0,
+  "finished": true
 }
