@@ -125,10 +125,70 @@ This document captures the specific regression hypothesis for each fix implement
 
 ---
 
+## R11 (R4-Fix1): DB Trigger for Owner-Count Invariant
+
+**Fix:** Migration 019 creates deferred constraint triggers `trg_enforce_owner_count` and `trg_enforce_owner_on_insert` on `tenant_memberships` in addition to application-level advisory locks.
+
+**Regression Hypothesis:**
+1. A bulk data migration or admin script uses `ALTER TABLE tenant_memberships DISABLE TRIGGER ALL;` or drops the trigger during maintenance and fails to re-enable it.
+2. A new membership mutation path (e.g. org merging, user deactivation) bypasses the trigger or is executed in a context that suppresses exceptions.
+
+**Check in future audits:** Verify `trg_enforce_owner_count` and `trg_enforce_owner_on_insert` remain active in `information_schema.triggers` and integration tests pass.
+
+---
+
+## R12 (R4-Fix2): OOXML XXE and Zip-Bomb Guard via defusedxml
+
+**Fix:** `extract_docx.py` and `extract_pptx.py` use `defusedxml.ElementTree.iterparse(..., forbid_dtd=True)` on all `.xml`/`.rels` package entries, and enforce XML entry size limits and zip-bomb ratio checks.
+
+**Regression Hypothesis:**
+1. Someone changes `iterparse` invocation without specifying `forbid_dtd=True` (which defaults to `False` in `defusedxml.ElementTree.iterparse`), allowing DTD attacks.
+2. A new parser for another XML-based or zip-based format (e.g. XLSX, ODT, SVG) is added that parses directly with standard library `xml` or `lxml` without defusedxml validation.
+
+**Check in future audits:** Verify all XML parsers use `defusedxml` with `forbid_dtd=True` and run unit tests with crafted malicious OOXML packages.
+
+---
+
+## R13 (R4-Fix3): Redis Budget Reservation Release & TTL Backstop
+
+**Fix:** `RedisBudgetCounter` implements `release_reservation` on failure and TTL backstop via `math.min(reservation_ttl, ttl)` to prevent quota exhaustion from failed calls.
+
+**Regression Hypothesis:**
+1. A new LLM endpoint or worker task reserves budget but fails to wrap execution in `try ... except` that calls `release_reservation()`.
+2. A code path sets `reservation_ttl` to 0 or negative, causing instant expiration of the budget counter key.
+
+**Check in future audits:** Audit all `check_and_reserve` call sites to ensure paired `reconcile()` on success and `release_reservation()` on exception.
+
+---
+
+## R14 (R4-Fix4): Global Registration Rate Limiting
+
+**Fix:** `/auth/register` applies global hourly rate limit (`registration_rate_limit_per_hour`) alongside per-IP limits to prevent tenant-farming Sybil attacks.
+
+**Regression Hypothesis:**
+1. A new tenant onboarding flow (e.g. OAuth signup, invite acceptance, CLI registration) is introduced without the global rate limit check.
+2. An outage in Redis causes registration rate limiter to fail open instead of failing back to bounded memory local rate limiter.
+
+**Check in future audits:** Verify every tenant creation code path checks `registration_rate_limit_per_hour`.
+
+---
+
+## R15 (R4-Fix5): Circuit Breaker Streaming Recovery
+
+**Fix:** `CircuitBreaker.record_success()` resets `self.opened_at = None` in addition to `self.failures = 0`.
+
+**Regression Hypothesis:**
+1. Streaming endpoints catch errors internally without invoking `record_failure()`, leaving breaker blind to streaming upstream failures.
+2. Generator disconnection or client aborts are counted as provider failures, prematurely tripping the breaker.
+
+**Check in future audits:** Verify streaming handlers call `record_success()` on completion and only call `record_failure()` on provider exceptions.
+
+---
+
 ## Process Regression Hypothesis (Meta)
 
-**Observation:** Round 3 found 3 regressions introduced by Round 2 fixes (RA4, RA7, RA3).
+**Observation:** Round 3 and Round 4 found multiple regressions and untested edge cases introduced by prior fixes (e.g., `forbid_dtd=False` default, `CircuitBreaker.opened_at` not reset on success).
 
-**Hypothesis:** Future rounds will continue to find regressions unless each fix has its regression hypothesis documented BEFORE merge and checked in the next audit round.
+**Hypothesis:** Future rounds will continue to find regressions unless each fix has its regression hypothesis documented BEFORE merge and verified with negative/adversarial tests.
 
-**Check in Round 4:** Verify this document exists and was used to guide Round 4's audit scope.
+**Check in future audits:** Verify this document is maintained and updated on every phase transition.

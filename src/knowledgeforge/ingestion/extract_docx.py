@@ -22,7 +22,7 @@ def _validate_xml_entry_streaming(entry_file: BinaryIO, filename: str) -> None:
     """
     try:
         # iterparse still enforces entity/DTD restrictions; we just iterate to trigger validation
-        for _event, _elem in DefusedIterparse(entry_file, events=("start",)):
+        for _event, _elem in DefusedIterparse(entry_file, events=("start",), forbid_dtd=True):
             pass
     except DefusedET.EntitiesForbidden as exc:
         raise DOCXExtractionError(
@@ -36,7 +36,7 @@ def _validate_xml_entry_streaming(entry_file: BinaryIO, filename: str) -> None:
         raise DOCXExtractionError(
             f"DOCX entry {filename} contains external references; rejected for security"
         ) from exc
-    except DefusedET.ExpatError:
+    except (DefusedET.ParseError, SyntaxError):
         # Malformed XML that isn't an attack — let python-docx handle it
         pass
 

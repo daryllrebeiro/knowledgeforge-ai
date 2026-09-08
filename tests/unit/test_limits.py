@@ -44,7 +44,7 @@ def test_redis_limiter_stores_epoch_time_not_monotonic() -> None:
     limiter = RedisTokenBucketLimiter(client)
     limiter.check("tenant-a", "ask", capacity=2)
     # ARGV[1] is the "now" argument; epoch seconds are ~1.7e9, monotonic is small.
-    assert float(client.calls[0][2]) > 1_000_000_000
+    assert float(client.calls[0][3]) > 1_000_000_000
 
 
 def test_redis_limiter_rejects_when_script_denies() -> None:

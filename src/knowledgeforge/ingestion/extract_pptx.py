@@ -24,7 +24,7 @@ def _validate_xml_entry_streaming(entry_file: BinaryIO, filename: str) -> None:
     """
     try:
         # iterparse still enforces entity/DTD restrictions; we just iterate to trigger validation
-        for _event, _elem in DefusedIterparse(entry_file, events=("start",)):
+        for _event, _elem in DefusedIterparse(entry_file, events=("start",), forbid_dtd=True):
             pass
     except DefusedET.EntitiesForbidden as exc:
         raise PPTXExtractionError(
@@ -38,7 +38,7 @@ def _validate_xml_entry_streaming(entry_file: BinaryIO, filename: str) -> None:
         raise PPTXExtractionError(
             f"PPTX entry {filename} contains external references; rejected for security"
         ) from exc
-    except DefusedET.ExpatError:
+    except (DefusedET.ParseError, SyntaxError):
         # Malformed XML that isn't an attack — let python-pptx handle it
         pass
 
@@ -61,6 +61,10 @@ def extract_pptx(file: BinaryIO) -> list[tuple[int, str]]:
             total_uncompressed = 0
             for info in zf.infolist():
                 total_uncompressed += info.file_size
+                if total_uncompressed > max_total:
+                    raise PPTXExtractionError(
+                        f"PPTX total uncompressed size {total_uncompressed} bytes exceeds limit {max_total}"
+                    )
                 if info.compress_size > 0:
                     ratio = info.file_size / info.compress_size
                     if ratio > max_ratio:

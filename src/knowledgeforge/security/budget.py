@@ -105,19 +105,22 @@ class RedisBudgetCounter:
     def _key(self, tenant_id: str) -> str:
         return make_redis_key(f"budget:{self._budget_type}:{tenant_id}")
 
-    def check_and_reserve(self, tenant_id: str, estimated_cost: int) -> tuple[bool, int, int]:
+    def check_and_reserve(
+        self, tenant_id: str, estimated_cost: int, limit: int | None = None
+    ) -> tuple[bool, int, int]:
         """Atomically check budget and reserve estimated cost.
 
         Returns (allowed, current_usage, ttl_seconds).
         If allowed is False, the reservation was not made.
         Raises HTTPException if Redis is unavailable (fail closed for budget safety).
         """
+        effective_limit = self._daily_limit if limit is None else limit
         try:
             result = self._client.eval(  # type: ignore[attr-defined]
                 self._SCRIPT_CHECK_AND_INCREMENT,
                 1,
                 self._key(tenant_id),
-                self._daily_limit,
+                effective_limit,
                 self._window_seconds,
                 estimated_cost,
                 time.time(),
@@ -281,3 +284,88 @@ def estimate_token_cost(question: str, max_context_chars: int = 10000) -> int:
     # Output tokens: estimate ~500 tokens for answer
     output_tokens = 500
     return input_tokens + output_tokens
+
+
+def invalidate_tenant_budget_cache(tenant_id: object, redis_client: object | None = None) -> None:
+    """Invalidate cached tenant budget tier information in Redis."""
+    client = redis_client or _get_redis_client()
+    if client is not None:
+        try:
+            key = make_redis_key(f"cache:tenant_budget:{tenant_id}")
+            client.delete(key)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+
+def get_tenant_budget_limits(
+    tenant_id: object,
+    connection: object | None = None,
+    redis_client: object | None = None,
+) -> tuple[int, int, str, bool]:
+    """Resolve dynamic token budget, extraction budget, tier, and email verification status.
+
+    Returns:
+        (token_limit, extraction_limit, tier, is_verified)
+
+    Checks Redis cache first (TTL 60s).
+    Falls back to DB query.
+    Falls back to config defaults on DB/Redis error.
+    """
+    settings = get_settings()
+    client = redis_client or _get_redis_client()
+    cache_key = make_redis_key(f"cache:tenant_budget:{tenant_id}")
+
+    if client is not None:
+        try:
+            cached = client.get(cache_key)  # type: ignore[attr-defined]
+            if cached:
+                import json
+                data = json.loads(cached)
+                return (
+                    int(data["token_limit"]),
+                    int(data["extraction_limit"]),
+                    str(data["tier"]),
+                    bool(data["is_verified"]),
+                )
+        except Exception:
+            pass
+
+    # Query DB
+    try:
+        from knowledgeforge.billing.service import get_tenant_billing_info
+        from knowledgeforge.db import get_connection
+
+        if connection is not None:
+            info = get_tenant_billing_info(connection, tenant_id)  # type: ignore[arg-type]
+        else:
+            with get_connection() as conn:
+                info = get_tenant_billing_info(conn, tenant_id)  # type: ignore[arg-type]
+
+        token_limit = int(info["daily_token_budget"])
+        extraction_limit = int(info["daily_extraction_budget"])
+        tier = str(info["tier"])
+        is_verified = bool(info["is_email_verified"])
+
+        # Cache in Redis with 60s TTL
+        if client is not None:
+            try:
+                import json
+                payload = json.dumps({
+                    "token_limit": token_limit,
+                    "extraction_limit": extraction_limit,
+                    "tier": tier,
+                    "is_verified": is_verified,
+                })
+                client.setex(cache_key, 60, payload)  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
+        return token_limit, extraction_limit, tier, is_verified
+    except Exception:
+        # Graceful fallback to config defaults
+        return (
+            settings.daily_token_budget,
+            settings.daily_extraction_budget,
+            "free",
+            True,
+        )

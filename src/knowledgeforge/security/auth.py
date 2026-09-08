@@ -240,6 +240,78 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+EMAIL_VERIFICATION_EXPIRY_HOURS = 24
+
+
+def create_email_verification_token(
+    connection,
+    user_id: UUID,
+    expiry_hours: int = EMAIL_VERIFICATION_EXPIRY_HOURS,
+) -> tuple[UUID, str]:
+    """Generate an email verification token for a user.
+
+    Returns (token_id, plaintext_token).
+    Only the SHA-256 hash is stored in email_verification_tokens.
+    """
+    token = secrets.token_urlsafe(32)
+    token_hash = _hash_token(token)
+    expires_at = datetime.now(UTC) + timedelta(hours=expiry_hours)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """,
+            (user_id, token_hash, expires_at),
+        )
+        row = cursor.fetchone()
+    if row is None:
+        raise RuntimeError("verification token insert did not return an ID")
+    return UUID(str(row[0])), token
+
+
+def consume_email_verification_token(
+    connection,
+    token: str,
+) -> tuple[bool, UUID | None, UUID | None]:
+    """Atomically consume an email verification token and mark the user verified.
+
+    Single-use atomic consumption:
+    DELETE FROM email_verification_tokens WHERE token_hash = %s AND expires_at > now() RETURNING user_id;
+    Returns: (success, user_id, tenant_id).
+    If token was expired, invalid, or already used, returns (False, None, None).
+    """
+    token_hash = _hash_token(token)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            DELETE FROM email_verification_tokens
+            WHERE token_hash = %s AND expires_at > now()
+            RETURNING user_id
+            """,
+            (token_hash,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return False, None, None
+
+        user_id = UUID(str(row[0]))
+        cursor.execute(
+            """
+            UPDATE users
+            SET email_verified = true
+            WHERE id = %s
+            RETURNING tenant_id
+            """,
+            (user_id,),
+        )
+        tenant_row = cursor.fetchone()
+        tenant_id = UUID(str(tenant_row[0])) if tenant_row else None
+        connection.commit()
+        return True, user_id, tenant_id
+
+
 def create_invitation(
     connection,
     tenant_id: UUID,

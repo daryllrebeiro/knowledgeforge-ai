@@ -103,8 +103,7 @@ def test_partial_hit_embeds_only_the_misses(monkeypatch) -> None:
     embed_cache.embed_texts_cached(connection, object(), ["alpha"], model="m")
     alpha_digest = connection.cursor_result.inserted[0][0]
 
-    calls.clear()
-    _patch_embeddings(monkeypatch, [EmbeddingResult(vectors=[[0.3]], input_tokens=4)])
+    calls = _patch_embeddings(monkeypatch, [EmbeddingResult(vectors=[[0.3]], input_tokens=4)])
     partial_connection = FakeConnection(cached_rows=[(alpha_digest, "[0.9]")])
     result = embed_cache.embed_texts_cached(
         partial_connection, object(), ["alpha", "beta"], model="m"
