@@ -668,3 +668,86 @@ def test_api_admin_billing_requires_platform_admin(monkeypatch):
     assert update_res.status_code == 200
     assert db.tenants[tenant_id]["tier"] == "enterprise"
 
+
+def test_local_billing_flag_refused_outside_dev():
+    from tests.unit.test_config import make_settings
+    with pytest.raises(RuntimeError, match="LOCAL_BILLING may only be used in development"):
+        make_settings(environment="production", local_billing=True).validate_runtime()
+
+
+def test_stripe_checkout_session_real_sdk_call(monkeypatch):
+    import stripe
+    from unittest.mock import MagicMock
+    from knowledgeforge.billing import stripe_client
+
+    mock_session = MagicMock()
+    mock_session.id = "cs_live_real_stripe_session_999"
+    mock_session.url = "https://checkout.stripe.com/c/pay/cs_live_real_stripe_session_999"
+
+    monkeypatch.setattr(stripe.checkout.Session, "create", lambda **kwargs: mock_session)
+
+    settings = get_settings().model_copy(
+        update={
+            "environment": "production",
+            "local_billing": False,
+            "stripe_secret_key": "sk_test_real_key_123",
+            "stripe_pro_price_id": "price_pro_real_123",
+        }
+    )
+    monkeypatch.setattr(stripe_client, "get_settings", lambda: settings)
+
+    session_id, url = create_checkout_session(
+        tenant_id="tenant_123",
+        tier="pro",
+        success_url="https://app.com/success",
+        cancel_url="https://app.com/cancel",
+        customer_id="cus_real_123",
+    )
+    assert session_id == "cs_live_real_stripe_session_999"
+    assert "https://checkout.stripe.com" in url
+
+
+def test_stripe_portal_session_real_sdk_call(monkeypatch):
+    import stripe
+    from unittest.mock import MagicMock
+    from knowledgeforge.billing import stripe_client
+
+    mock_portal = MagicMock()
+    mock_portal.url = "https://billing.stripe.com/session/bps_live_real_123"
+
+    monkeypatch.setattr(stripe.billing_portal.Session, "create", lambda **kwargs: mock_portal)
+
+    settings = get_settings().model_copy(
+        update={
+            "environment": "production",
+            "local_billing": False,
+            "stripe_secret_key": "sk_test_real_key_123",
+        }
+    )
+    monkeypatch.setattr(stripe_client, "get_settings", lambda: settings)
+
+    portal_url = create_portal_session(
+        customer_id="cus_real_123",
+        return_url="https://app.com/dashboard",
+    )
+    assert portal_url == "https://billing.stripe.com/session/bps_live_real_123"
+
+
+def test_stripe_sessions_require_secret_key_outside_dev(monkeypatch):
+    from knowledgeforge.billing import stripe_client
+
+    settings = get_settings().model_copy(
+        update={
+            "environment": "production",
+            "local_billing": False,
+            "stripe_secret_key": "",
+        }
+    )
+    monkeypatch.setattr(stripe_client, "get_settings", lambda: settings)
+
+    with pytest.raises(RuntimeError, match="STRIPE_SECRET_KEY must be configured"):
+        create_checkout_session("t1", "pro", "http://ok", "http://cancel")
+
+    with pytest.raises(RuntimeError, match="STRIPE_SECRET_KEY must be configured"):
+        create_portal_session("cus_1", "http://ok")
+

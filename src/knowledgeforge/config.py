@@ -96,6 +96,9 @@ class Settings(BaseSettings):
     stripe_pro_price_id: str = ""
     stripe_enterprise_price_id: str = ""
     stripe_payment_grace_period_days: int = 3
+    # When True, Stripe API calls fall back to deterministic local mock sessions.
+    # Refused outside development by validate_runtime().
+    local_billing: bool = False
     # Transactional email provider configuration
     email_provider: str = "console"  # "console", "postmark", "sendgrid"
     email_from_address: str = "noreply@knowledgeforge.ai"
@@ -134,6 +137,8 @@ class Settings(BaseSettings):
                 "GEMINI_API_KEY must be configured when LOCAL_EMBEDDINGS or "
                 "LOCAL_GENERATION is disabled"
             )
+        if self.local_billing and self.environment.lower() != "development":
+            problems.append("LOCAL_BILLING may only be used in development")
         if self.environment.lower() != "development":
             billing_enabled = bool(self.stripe_secret_key or self.stripe_webhook_secret)
             if billing_enabled:
