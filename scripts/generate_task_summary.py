@@ -102,8 +102,11 @@ def main() -> int:
         print(json.dumps(summary, indent=2))
         return 0
 
+    content = TASK_FILE.read_text(encoding="utf-8") if TASK_FILE.exists() else ""
+    first_line = content.splitlines()[0].lstrip("# ").replace("—", "--").strip() if content else "Phase 5 Engineering Status Summary"
+
     print("=" * 70)
-    print("KnowledgeForge AI -- Phase 4 Engineering Status Summary")
+    print(first_line)
     print("=" * 70)
     print(f"Total Priority Items : {summary['total_sections']}")
     print(f"Total Tracked Tasks  : {summary['total_subtasks']}")

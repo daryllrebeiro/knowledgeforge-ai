@@ -33,11 +33,12 @@ GROUNDING_PATTERNS = [
 ]
 
 
-def verify_decisions_integrity() -> list[str]:
-    if not DECISIONS_PATH.exists():
-        return [f"File {DECISIONS_PATH} does not exist"]
+def verify_decisions_integrity(path: Path = DECISIONS_PATH) -> list[str]:
+    target_path = Path(path)
+    if not target_path.exists():
+        return [f"File {target_path} does not exist"]
 
-    content = DECISIONS_PATH.read_text(encoding="utf-8")
+    content = target_path.read_text(encoding="utf-8")
     sections = re.split(r"\n(?=##\s+)", content)
     violations = []
 

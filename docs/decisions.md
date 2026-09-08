@@ -405,6 +405,8 @@ To support programmatic clients and external integrators with stability guarante
 - **Enforcement Rules**:
   - Automated tools, AI coding assistants, and CI jobs may not self-certify items to `Done`.
   - Claims regarding latencies, accuracy, throughput, or cost in `docs/decisions.md` must be empirically measured and accompanied by an explicit invocation citation, or labeled `NOT YET MEASURED` / `PENDING` / `RETRACTED`. Enforced mechanically via `python scripts/verify_decisions.py`.
+  - **Human Sign-Off Policy (Process Fix D)**: Human sign-off is mandatory before any item transitioning to `Done` can be relied upon for release or external claim. Human sign-off is also mandatory for any `Verified` claim that touches external financial spend, production cloud resources, live webhooks, or legal/compliance obligations.
+  - Tooling verification gate enforced mechanically by `python scripts/verify_decisions.py` and `scripts/generate_task_summary.py`.
 
 
 
