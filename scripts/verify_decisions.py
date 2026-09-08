@@ -60,6 +60,26 @@ def verify_decisions_integrity(path: Path = DECISIONS_PATH) -> list[str]:
                 f"Numeric benchmarks require either an explicit script/eval command citation "
                 f"or an explicit 'NOT YET MEASURED' / 'PENDING' / 'RETRACTED' status."
             )
+            continue
+
+        # If grounded by citation, verify that cited scripts or evaluation artifacts exist on disk
+        is_explicitly_unmeasured = bool(
+            re.search(r"\b(?:RETRACTED|NOT YET MEASURED|PENDING)\b", section, re.IGNORECASE)
+        )
+        if not is_explicitly_unmeasured:
+            for match in re.finditer(
+                r"`(?:[a-zA-Z0-9_\-]+\s+)?((?:evaluation|scripts|docs|tests|src)/[a-zA-Z0-9_\-\.\/]+)`",
+                section,
+            ):
+                cited_path = match.group(1).strip()
+                cited_file = cited_path.split()[0]
+                repo_root = target_path.parent.parent if target_path.parent.name == "docs" else Path(".")
+                resolved_file = repo_root / cited_file
+                if not resolved_file.exists() and not Path(cited_file).exists():
+                    violations.append(
+                        f"Phantom citation in section '{header}': "
+                        f"Cited file '{cited_file}' does not exist on disk."
+                    )
 
     return violations
 

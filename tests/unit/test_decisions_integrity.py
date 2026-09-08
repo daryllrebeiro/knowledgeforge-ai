@@ -44,3 +44,18 @@ def test_decisions_accepts_unmeasured_or_retracted_marker(tmp_path: Path):
     )
     violations = verify_decisions_integrity(fake_decisions)
     assert not violations
+
+
+def test_decisions_flags_phantom_citation(tmp_path: Path):
+    fake_decisions = tmp_path / "decisions.md"
+    fake_decisions.write_text(
+        "# Decisions\n\n"
+        "## 2026-09-08 — Phantom Citation Benchmark\n\n"
+        "Hit@5 = 0.999 verified by `python evaluation/phantom_runner_never_existed.py`.\n",
+        encoding="utf-8",
+    )
+    violations = verify_decisions_integrity(fake_decisions)
+    assert len(violations) == 1
+    assert "Phantom citation in section '## 2026-09-08 — Phantom Citation Benchmark'" in violations[0]
+    assert "phantom_runner_never_existed.py" in violations[0]
+

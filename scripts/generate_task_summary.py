@@ -21,6 +21,21 @@ TASK_FILE = Path("docs/task.md")
 
 STATUS_RE = re.compile(r"^-\s+\[(Done|Verified|Implemented|Gated|Retracted)\]\s+(.*)$")
 SECTION_RE = re.compile(r"^##\s+(Item\s+\d+.*)$")
+SIGNED_OFF_RE = re.compile(r"\(Signed-off-by:\s*([^\)]+)\)", re.IGNORECASE)
+
+
+def validate_task_integrity(sections: dict) -> list[str]:
+    """Enforce Ground Rule 5: [Done] requires independent sign-off tag '(Signed-off-by: <reviewer>)'."""
+    violations = []
+    for sec_title, items in sections.items():
+        for item in items:
+            if item["status"] == "Done":
+                if not SIGNED_OFF_RE.search(item["description"]):
+                    violations.append(
+                        f"Ground Rule 5 violation in '{sec_title}': [Done] requires independent sign-off tag "
+                        f"'(Signed-off-by: <reviewer>)'. Found: '{item['description']}'"
+                    )
+    return violations
 
 
 def parse_tasks(file_path: Path = TASK_FILE) -> dict:
@@ -43,6 +58,9 @@ def parse_tasks(file_path: Path = TASK_FILE) -> dict:
         if item_match and current_section:
             status = item_match.group(1)
             description = item_match.group(2)
+            # Demote unsigned [Done] to Verified per Ground Rule 5
+            if status == "Done" and not SIGNED_OFF_RE.search(description):
+                status = "Verified"
             sections[current_section].append({
                 "status": status,
                 "description": description,
