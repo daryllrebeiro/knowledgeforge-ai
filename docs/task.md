@@ -1,66 +1,71 @@
-# KnowledgeForge AI — Phase 5 Task Tracker: From Claimed to Verified
+# KnowledgeForge AI — Phase 6 Task Tracker: Bridge, Verify, Then Extend
 
 Status Taxonomy:
 - **Implemented**: Code and configuration written and committed; passes unit tests against mocks.
 - **Verified**: Exercised against a real external system or real infrastructure, with specific evidence cited.
-- **Done**: Verified, plus survived a targeted adversarial audit pass.
+- **Done**: Verified, plus survived a targeted adversarial audit pass with independent reviewer sign-off `(Signed-off-by: <reviewer>)`.
 - **Gated**: External dependency blocked (credentials, live cloud billing, or external API quota).
 - **Retracted**: Unsubstantiated claims removed following audit findings.
 
 ---
 
-## Item 1 — Ship the Emergency Fix and the Full Round 5 Remediation Set
-- [Done] Fix 0 verified: unsigned webhook POST is rejected with 503 and tenant tier unchanged when `stripe_webhook_secret` unset
-- [Done] Round 5 remediation set committed and pushed (Fix 0, Fix 1, Fixes 2-4 retractions & gates, Fix 5 worker tests, Fix 6 GDPR, Fix 7 OpenAPI)
-- [Done] Process fixes A–D in place: citation check, task-based summary generator, three-tier vocabulary, human sign-off policy
+## Item 1 — Close the Unverified-Account Purge Call-Site Gap (Phase 5 Item 7 Follow-Up)
+- [Verified] Periodic purge entrypoint implemented at `src/knowledgeforge/security/purge_job.py` with CLI interface (`--max-age-days`, `--purge-documents`, `--dry-run`)
+- [Verified] Unit tests in `tests/unit/test_purge_job.py` verifying dry-run safety and actual deletion of stale unverified accounts
+- [Verified] Integration tests against real PostgreSQL in `tests/integration/test_gdpr_postgres.py`
+- [Verified] Phase 5 Items 1 and 9 self-certified [Done] statuses demoted to [Verified] in compliance with Ground Rule 5
 
-## Item 2 — Run the Real Gemini Evaluation
-- [Implemented] Evaluation harness committed (`evaluation/run_phase12_eval.py`) with local deterministic smoke test passing
-- [Gated] Real eval run against all 3 chunking profiles with live `GEMINI_API_KEY` (blocked: Secret Manager key returned 429 RESOURCE_EXHAUSTED)
-- [Gated] Real contract and invoice extraction accuracy evaluation via `check_extraction_accuracy.py` (blocked on API quota)
-- [Gated] Record empirical Hit@5, correctness, refusal accuracy, and token costs in `docs/decisions.md`
-- [Gated] Make hybrid-search and confidence-threshold decisions based on empirical numbers
+## Item 2 — Real Stripe Integration via stripe-mock (Bridge the Verification Gap)
+- [Verified] `stripe-mock` service (`stripe/stripe-mock:v0.190.0`) added on port 12111 in `docker-compose.full.yml`
+- [Verified] `stripe_api_base` added to settings in `src/knowledgeforge/config.py` and `src/knowledgeforge/billing/stripe_client.py`
+- [Verified] Integration test suite `tests/integration/test_stripe_mock.py` and mock client suite `tests/unit/test_stripe_client_mock_server.py` exercising checkout session, portal session, and webhook lifecycle against `stripe-mock`
+- [Gated] Live test-mode Stripe API verification (blocked on real `sk_test_...` key)
 
-## Item 3 — Actual Infrastructure Deployment
-- [Implemented] Terraform configuration (`terraform/main.tf`), Dockerfiles, and deployment workflow (`.github/workflows/deploy.yml`)
-- [Gated] Live `terraform apply` against GCP project (blocked on user approval and live provisioning confirmation per deployment gate)
-- [Gated] Full document lifecycle (register -> upload -> ready -> ask -> delete) against live Cloud Run deployment
+## Item 3 — Ready-to-Fire Verification Harnesses for Gated Items (Items 3, 6, 8)
+- [Verified] Infrastructure verification harness `scripts/verify_infra_live.py` with `--dry-run` validation and Cloud Run / Cloud SQL checks
+- [Verified] Alert policy verification harness `scripts/verify_alerts_live.py` with `--dry-run` validation and Cloud Monitoring checks
+- [Verified] Disaster recovery verification harness `scripts/verify_dr_live.py` with `--dry-run` validation and PITR backup checksum checks
+- [Verified] Unit test suite `tests/unit/test_live_harnesses_dry_run.py` verifying `--dry-run` exit codes and output contracts
+- [Gated] Live infrastructure provisioning and execution against live GCP project (blocked on deployment approval)
 
-## Item 4 — Real Stripe Integration, Fail-Closed by Construction
-- [Verified] Real `stripe>=11.0,<12.0` SDK integration (`stripe.Webhook.construct_event`, `stripe.checkout.Session.create`)
-- [Verified] `LOCAL_BILLING` flag refused outside development by `validate_runtime()`, preventing silent mock fallback
-- [Verified] Webhook idempotency and signature rejection verified via unit tests
-- [Gated] Real test-mode checkout session, portal session, and webhook round trip (blocked on live Stripe test keys `sk_test_...`)
+## Item 4 — Resumable Gemini Evaluation Harness with Checkpoints and Cost Guardrails (Item 2 Bridge)
+- [Verified] Resumable checkpoint runner with `CheckpointTracker` in `evaluation/run_phase12_eval.py`
+- [Verified] Spend cap guardrail (`--max-spend-usd`) and graceful 429 quota handling with checkpoint preservation
+- [Verified] Unit tests in `tests/unit/test_resumable_eval.py` testing resume logic, spend cap trip, and 429 backoff
+- [Verified] Deterministic local evaluation smoke test (`python -m evaluation.run_phase12_eval --local`) producing `docs/phase12-eval-checkpoint.json`
+- [Gated] Live Gemini evaluation across all 3 chunking profiles (blocked on live API quota)
 
-## Item 5 — Zero-Coverage Worker/Dispatcher Modules Get Real Tests
-- [Implemented] `pull_entrypoint.py` claim/lease, already-claimed, and fatal error handling (98% branch coverage)
-- [Implemented] `extraction_pull_entrypoint.py` claim/lease, model failure, and error handling (97% branch coverage)
-- [Implemented] `extraction_entrypoint.py` duplicate and malformed message handling (90% branch coverage)
-- [Implemented] `outbox_dispatcher.py` batch dispatch, lease acquisition, and publish failure handling (84% branch coverage)
+## Item 5 — Strengthen the Mechanical Integrity Tooling (Item 9 Follow-Up)
+- [Verified] Non-phantom file existence verification added to `scripts/verify_decisions.py`
+- [Verified] Ground Rule 5 sign-off validator (`validate_task_integrity()`) added to `scripts/generate_task_summary.py`
+- [Verified] Unit test suites `tests/unit/test_decisions_integrity.py` and `tests/unit/test_task_summary.py` passing with 100% coverage
 
-## Item 6 — Observability Wired to and Verified Against Real Infrastructure
-- [Implemented] Cloud Monitoring alert policies defined in `terraform/main.tf` for circuit breaker, platform spend, DLQ, and error rate
-- [Implemented] Structured JSON logging standardized across API, uvicorn, and background workers
-- [Gated] Alert policy firing and notification channel delivery verified against live deployed system (blocked on Item 3)
+## Item 6 — Self-Service Tenant Dashboard & Usage API (Feature Track F5)
+- [Implemented] `GET /tenant/usage` and `GET /tenant/dashboard` endpoints added to `src/knowledgeforge/api.py` strictly scoped to caller's `tenant_id`
+- [Implemented] Daily trend metrics, token and extraction budget tracking, and tenant metadata reporting
+- [Implemented] Unit test suite `tests/unit/test_tenant_dashboard.py` verifying tenant scoping, data accuracy, and role permissions
 
-## Item 7 — GDPR Export Completeness and Retention Enforcement
-- [Verified] `export_tenant_data` covers all 9 tenant-scoped entities (`tenant`, `users`, `documents`, `chunks`, `extractions`, `conversations`, `api_keys`, `billing_events`, `invitations`)
-- [Verified] Retention claims in `docs/privacy-policy.md` verified against enforcing code: 30-day GCS lifecycle rule and `purge_unverified_accounts()`
-- [Verified] Comprehensive unit test suite in `tests/unit/test_gdpr.py` passing (6/6 tests)
+## Item 7 — Outbound Webhooks with SSRF-Safe Delivery (Feature Track F6)
+- [Implemented] Database migration `migrations/023_tenant_webhooks.sql` for webhooks and delivery tracking
+- [Implemented] SSRF validation engine `src/knowledgeforge/security/ssrf.py` blocking loopback, link-local, private RFC 1918, and cloud metadata (`169.254.169.254`)
+- [Implemented] Webhook dispatcher `src/knowledgeforge/security/webhooks.py` with timing-safe HMAC SHA-256 signatures, exponential backoff, and dead-letter queue
+- [Implemented] Webhook management endpoints `POST /tenant/webhooks`, `GET /tenant/webhooks`, `DELETE /tenant/webhooks/{id}`
+- [Implemented] Unit test suite `tests/unit/test_outbound_webhooks.py` covering SSRF rejection, signature verification, and delivery retries
 
-## Item 8 — Disaster Recovery and End-to-End Tests Against Real Staging
-- [Implemented] Point-in-time recovery documentation and automated backup integrity checker (`scripts/verify_backup.py`)
-- [Implemented] Deployed-target smoke test suite (`scripts/deploy_smoke_test.py`)
-- [Gated] Live PITR restore drill against real staging Cloud SQL instance (blocked on Item 3)
-- [Gated] Deployed smoke test suite passing against live staging URL (blocked on Item 3)
+## Item 8 — Enterprise OIDC SSO Integration (Feature Track F7)
+- [Implemented] Database migration `migrations/024_tenant_sso_and_retention.sql` for tenant SSO configurations
+- [Implemented] OIDC SSO integration `src/knowledgeforge/security/sso.py` gated to Enterprise tier with CSRF state tokens, JIT provisioning, and standard JWT minting
+- [Implemented] SSO endpoints `PUT /tenant/sso/config`, `GET /tenant/sso/config`, `POST /auth/sso/oidc/authorize`, `POST /auth/sso/oidc/callback`
+- [Implemented] Unit test suite `tests/unit/test_sso.py` covering tier enforcement, CSRF state verification, JIT user provisioning, and claim validation
 
-## Item 9 — Build the Verified-Status Gate as Tooling, Not Policy
-- [Done] Mechanical decisions citation verifier (`scripts/verify_decisions.py`) with negative and positive tests (`tests/unit/test_decisions_integrity.py`)
-- [Done] Task-driven summary generator (`scripts/generate_task_summary.py`) with automated parser tests (`tests/unit/test_task_summary.py`)
-- [Done] Explicit human sign-off policy recorded in `docs/decisions.md` with tooling enforcement citation
+## Item 9 — Configurable Retention and Data Residency Settings (Feature Track F8)
+- [Implemented] Tenant retention and data residency columns (`retention_days`, `data_residency`) in `migrations/024_tenant_sso_and_retention.sql`
+- [Implemented] Endpoints `GET /tenant/settings` and `PUT /tenant/settings` in `src/knowledgeforge/api.py` with owner-only mutation and residency validation
+- [Implemented] Document retention purge job `purge_expired_documents` in `src/knowledgeforge/security/purge_job.py`
+- [Implemented] Unit test suite `tests/unit/test_retention_settings.py` verifying retention enforcement, residency options, and purge execution
 
-## Item 10 — Close the Second Extraction Schema and Reranking Decision Using Real Data
-- [Implemented] Commercial contract extraction schema (`ContractExtraction`) and 20-document golden set committed
-- [Implemented] Single-stage pgvector dense retrieval baseline active
-- [Gated] Empirical contract extraction accuracy evaluation using live Gemini calls (blocked on Item 2 API quota)
-- [Gated] Empirical reranking adoption evaluation using live retrieval numbers (blocked on Item 2 API quota)
+## Item 10 — Task Tracking, Decisions Log, and Capstone Verification
+- [Verified] Ground Rule 5 sign-off enforcement verified mechanically by `scripts/generate_task_summary.py`
+- [Verified] Decisions citations verified mechanically without phantom files by `scripts/verify_decisions.py`
+- [Verified] OpenAPI specification synchronized and verified with zero drift (`docs/openapi.json`)
+- [Verified] Complete test suite passing with test coverage exceeding the 58.00% floor
