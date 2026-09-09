@@ -1,6 +1,5 @@
 """Unit test for migration sequence, naming format, and content sanity."""
 
-from pathlib import Path
 from scripts.verify_migrations import verify_migrations
 
 

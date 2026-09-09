@@ -45,7 +45,9 @@ def verify_migrations(migration_dir: Path | None = None) -> list[str]:
             missing = set(expected) - set(numbers)
             duplicates = [n for n in numbers if numbers.count(n) > 1]
             if missing:
-                errors.append(f"Non-contiguous migration numbers detected. Missing: {sorted(missing)}")
+                errors.append(
+                    f"Non-contiguous migration numbers detected. Missing: {sorted(missing)}"
+                )
             if duplicates:
                 errors.append(f"Duplicate migration numbers detected: {sorted(set(duplicates))}")
 

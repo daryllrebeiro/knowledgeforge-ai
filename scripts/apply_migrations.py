@@ -3,7 +3,6 @@ from pathlib import Path
 
 import psycopg
 
-
 CONCURRENT_SUFFIX = ".concurrent.sql"
 
 
@@ -38,13 +37,12 @@ def main() -> None:
             )
             applied = {
                 row[0]
-                for row in connection.execute(
-                    "SELECT filename FROM schema_migrations"
-                ).fetchall()
+                for row in connection.execute("SELECT filename FROM schema_migrations").fetchall()
             }
-            if not applied and connection.execute(
-                "SELECT to_regclass('public.documents')"
-            ).fetchone()[0]:
+            if (
+                not applied
+                and connection.execute("SELECT to_regclass('public.documents')").fetchone()[0]
+            ):
                 connection.cursor().executemany(
                     "INSERT INTO schema_migrations (filename) VALUES (%s)",
                     [(migration.name,) for migration in migrations],
