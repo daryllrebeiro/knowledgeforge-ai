@@ -50,9 +50,7 @@ def test_migration_014_tables_exist(db) -> None:
         "extraction_jobs",
         "extraction_outbox",
     ):
-        exists = db.execute(
-            "SELECT to_regclass(%s)", (f"public.{table}",)
-        ).fetchone()[0]
+        exists = db.execute("SELECT to_regclass(%s)", (f"public.{table}",)).fetchone()[0]
         assert exists is not None, f"{table} missing"
     columns = {
         row[0]

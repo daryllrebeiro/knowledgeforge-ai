@@ -51,7 +51,7 @@ def test_local_ask_answers_with_citations_and_no_gemini(monkeypatch) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["answer"] == "Local answer for: What is the answer? [doc 1, page 4]"
-    assert body["citations"] == [{"document_id": str(DOCUMENT_ID), "page": 4}]
+    assert body["citations"] == [{"document_id": str(DOCUMENT_ID), "page": 4, "highlights": []}]
     # No Gemini calls means no token usage to record.
     assert logged["input_tokens"] == 0
     assert logged["output_tokens"] == 0

@@ -1,7 +1,7 @@
 """Billing service: Webhook event processing, atomic idempotency, and tier management."""
 
-from datetime import UTC, datetime, timedelta
 import logging
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from knowledgeforge.config import get_settings
@@ -48,9 +48,8 @@ def claim_webhook_event(
 def resolve_tenant_id_from_stripe_data(connection, data_object: dict) -> UUID | None:
     """Resolve tenant ID from Stripe event metadata, customer ID, or subscription ID."""
     # 1. Direct metadata or client_reference_id
-    raw_tenant_id = (
-        data_object.get("client_reference_id")
-        or data_object.get("metadata", {}).get("tenant_id")
+    raw_tenant_id = data_object.get("client_reference_id") or data_object.get("metadata", {}).get(
+        "tenant_id"
     )
     if raw_tenant_id:
         try:
@@ -105,7 +104,9 @@ def process_stripe_event(connection, event: dict, redis_client=None) -> dict:
         logger.info("Stripe event %s already claimed/processed; skipping replay", event_id)
         return {"status": "already_processed", "event_id": event_id}
 
-    logger.info("Processing Stripe webhook %s of type %s for tenant %s", event_id, event_type, tenant_id)
+    logger.info(
+        "Processing Stripe webhook %s of type %s for tenant %s", event_id, event_type, tenant_id
+    )
 
     with connection.cursor() as cursor:
         if event_type == "checkout.session.completed":
@@ -134,11 +135,7 @@ def process_stripe_event(connection, event: dict, redis_client=None) -> dict:
             customer_id = data_object.get("customer")
             status = data_object.get("status", "active")
             period_end_ts = data_object.get("current_period_end")
-            period_end = (
-                datetime.fromtimestamp(period_end_ts, UTC)
-                if period_end_ts
-                else None
-            )
+            period_end = datetime.fromtimestamp(period_end_ts, UTC) if period_end_ts else None
             tier = data_object.get("metadata", {}).get("tier")
 
             # If canceled, downgrade to free
@@ -203,6 +200,7 @@ def process_stripe_event(connection, event: dict, redis_client=None) -> dict:
     # Invalidate cached tenant budget in Redis
     if tenant_id:
         from knowledgeforge.security.budget import invalidate_tenant_budget_cache
+
         invalidate_tenant_budget_cache(tenant_id, redis_client=redis_client)
 
     return {
@@ -393,6 +391,7 @@ def update_tenant_tier_admin(
 
     if row and redis_client is not None:
         from knowledgeforge.security.budget import invalidate_tenant_budget_cache
+
         invalidate_tenant_budget_cache(tenant_id, redis_client=redis_client)
 
     return row is not None

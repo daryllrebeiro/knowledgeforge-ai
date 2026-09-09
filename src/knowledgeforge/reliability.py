@@ -23,8 +23,10 @@ def make_redis_key(suffix: str) -> str:
     return f"{_redis_key_namespace()}:{suffix}"
 
 
-def with_retry(
-    function: Callable[..., T], *, attempts: int = 2  # noqa: UP047
+def with_retry(  # noqa: UP047
+    function: Callable[..., T],
+    *,
+    attempts: int = 2,
 ) -> Callable[..., T]:
     """Retry an idempotent external call once (by default) with backoff."""
     if attempts < 1:
@@ -144,7 +146,9 @@ class RedisCircuitBreaker:
     return {0, failures, opened_at}
     """
 
-    def __init__(self, client: object, key: str, failure_threshold: int, recovery_seconds: float) -> None:
+    def __init__(
+        self, client: object, key: str, failure_threshold: int, recovery_seconds: float
+    ) -> None:
         self._client = client
         self._key = key
         self._failure_threshold = failure_threshold

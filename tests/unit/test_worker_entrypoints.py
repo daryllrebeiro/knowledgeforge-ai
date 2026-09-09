@@ -12,27 +12,26 @@ import json
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-import pytest
 
-from knowledgeforge.extraction.jobs import ExtractionEvent
-from knowledgeforge.ingestion.jobs import IngestionJob
+from knowledgeforge.extraction import outbox_dispatcher
 from knowledgeforge.worker import (
     extraction_entrypoint,
     extraction_pull_entrypoint,
     pull_entrypoint,
 )
-from knowledgeforge.extraction import outbox_dispatcher
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def mock_worker_settings(monkeypatch):
     from tests.unit.test_config import make_settings
+
     settings = make_settings(
         local_embeddings=True,
         local_generation=True,
@@ -50,6 +49,7 @@ def mock_worker_settings(monkeypatch):
 # ---------------------------------------------------------------------------
 # 1. pull_entrypoint tests
 # ---------------------------------------------------------------------------
+
 
 def test_pull_entrypoint_callback_success(monkeypatch):
     doc_id = uuid4()
@@ -81,7 +81,9 @@ def test_pull_entrypoint_callback_success(monkeypatch):
             mock_stream.result.return_value = None
             return mock_stream
 
-    monkeypatch.setattr(pull_entrypoint.pubsub_v1, "SubscriberClient", lambda **kwargs: MockSubscriber())
+    monkeypatch.setattr(
+        pull_entrypoint.pubsub_v1, "SubscriberClient", lambda **kwargs: MockSubscriber()
+    )
 
     pull_entrypoint.main()
 
@@ -116,6 +118,7 @@ def test_pull_entrypoint_callback_failure(monkeypatch):
     class MockConnContext:
         def __enter__(self):
             return self
+
         def __exit__(self, *args):
             pass
 
@@ -134,7 +137,9 @@ def test_pull_entrypoint_callback_failure(monkeypatch):
             mock_stream.result.return_value = None
             return mock_stream
 
-    monkeypatch.setattr(pull_entrypoint.pubsub_v1, "SubscriberClient", lambda **kwargs: MockSubscriber())
+    monkeypatch.setattr(
+        pull_entrypoint.pubsub_v1, "SubscriberClient", lambda **kwargs: MockSubscriber()
+    )
 
     pull_entrypoint.main()
     captured_callback(mock_msg)
@@ -152,6 +157,7 @@ def test_pull_entrypoint_claim_document(monkeypatch):
     class MockConnContext:
         def __enter__(self):
             return self
+
         def __exit__(self, *args):
             pass
 
@@ -181,7 +187,9 @@ def test_pull_entrypoint_claim_document(monkeypatch):
             mock_stream.result.return_value = None
             return mock_stream
 
-    monkeypatch.setattr(pull_entrypoint.pubsub_v1, "SubscriberClient", lambda **kwargs: MockSubscriber())
+    monkeypatch.setattr(
+        pull_entrypoint.pubsub_v1, "SubscriberClient", lambda **kwargs: MockSubscriber()
+    )
     pull_entrypoint.main()
 
     captured_callback(mock_msg)
@@ -192,6 +200,7 @@ def test_pull_entrypoint_claim_document(monkeypatch):
 # ---------------------------------------------------------------------------
 # 2. extraction_pull_entrypoint tests
 # ---------------------------------------------------------------------------
+
 
 def test_extraction_pull_entrypoint_success(monkeypatch):
     event_payload = {
@@ -225,7 +234,9 @@ def test_extraction_pull_entrypoint_success(monkeypatch):
             mock_stream.result.return_value = None
             return mock_stream
 
-    monkeypatch.setattr(extraction_pull_entrypoint.pubsub_v1, "SubscriberClient", lambda **kwargs: MockSubscriber())
+    monkeypatch.setattr(
+        extraction_pull_entrypoint.pubsub_v1, "SubscriberClient", lambda **kwargs: MockSubscriber()
+    )
 
     extraction_pull_entrypoint.main()
 
@@ -269,7 +280,9 @@ def test_extraction_pull_entrypoint_failure(monkeypatch):
             mock_stream.result.return_value = None
             return mock_stream
 
-    monkeypatch.setattr(extraction_pull_entrypoint.pubsub_v1, "SubscriberClient", lambda **kwargs: MockSubscriber())
+    monkeypatch.setattr(
+        extraction_pull_entrypoint.pubsub_v1, "SubscriberClient", lambda **kwargs: MockSubscriber()
+    )
 
     extraction_pull_entrypoint.main()
     captured_callback(mock_msg)
@@ -281,6 +294,7 @@ def test_extraction_pull_entrypoint_failure(monkeypatch):
 # ---------------------------------------------------------------------------
 # 3. extraction_entrypoint (FastAPI push worker) tests
 # ---------------------------------------------------------------------------
+
 
 def test_extraction_push_health():
     client = TestClient(extraction_entrypoint.app)
@@ -350,7 +364,11 @@ def test_extraction_push_oidc_verification():
 
     # Invalid token verification
     mock_request.headers = {"Authorization": "Bearer invalid.token.jwt"}
-    with patch.object(extraction_entrypoint.id_token, "verify_oauth2_token", side_effect=ValueError("Token expired")):
+    with patch.object(
+        extraction_entrypoint.id_token,
+        "verify_oauth2_token",
+        side_effect=ValueError("Token expired"),
+    ):
         with pytest.raises(HTTPException) as exc_info2:
             extraction_entrypoint._verify_oidc(mock_request, "expected-aud")
         assert exc_info2.value.status_code == 401
@@ -361,12 +379,14 @@ def test_extraction_push_oidc_verification():
 # 4. outbox_dispatcher tests
 # ---------------------------------------------------------------------------
 
+
 def test_outbox_dispatcher_empty_batch(monkeypatch):
     monkeypatch.setattr(outbox_dispatcher, "claim_outbox_batch", lambda conn, **kw: [])
 
     class MockConnContext:
         def __enter__(self):
             return self
+
         def __exit__(self, *args):
             pass
 
@@ -390,20 +410,25 @@ def test_outbox_dispatcher_dispatches_rows(monkeypatch):
     monkeypatch.setattr(outbox_dispatcher, "claim_outbox_batch", lambda conn, **kw: [row1, row2])
 
     mock_published = []
+
     class MockPublisher:
         def __init__(self, project, topic):
             self.topic = topic
+
         def publish(self, data):
             mock_published.append(data)
 
     monkeypatch.setattr(outbox_dispatcher, "PubSubPublisher", MockPublisher)
 
     mock_marked = []
-    monkeypatch.setattr(outbox_dispatcher, "mark_outbox_sent", lambda conn, oid: mock_marked.append(oid))
+    monkeypatch.setattr(
+        outbox_dispatcher, "mark_outbox_sent", lambda conn, oid: mock_marked.append(oid)
+    )
 
     class MockConnContext:
         def __enter__(self):
             return self
+
         def __exit__(self, *args):
             pass
 

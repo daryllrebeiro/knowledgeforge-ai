@@ -1,6 +1,6 @@
 from knowledgeforge.generation.prompt import (
-    LabeledChunk,
     SYSTEM_INSTRUCTION,
+    LabeledChunk,
     build_prompt,
 )
 from knowledgeforge.ingestion.chunk import TextChunk

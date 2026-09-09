@@ -3,21 +3,19 @@
 import json
 from datetime import date
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-import pytest
 
 from knowledgeforge import api
-from knowledgeforge.config import get_settings
 from knowledgeforge.extraction.classifier import (
     classify_locally,
     looks_like_contract_text,
     parse_classification,
 )
-from knowledgeforge.extraction.jobs import ExtractionEvent
-from knowledgeforge.extraction.pipeline import _parse_fields, process_extraction_job
+from knowledgeforge.extraction.pipeline import _parse_fields
 from knowledgeforge.extraction.provider import LocalExtractionProvider
 from knowledgeforge.extraction.schemas import (
     ContractExtraction,
@@ -26,15 +24,13 @@ from knowledgeforge.extraction.schemas import (
 )
 from knowledgeforge.extraction.store import (
     DocumentExtractionRow,
-    list_extractions,
-    store_document_extraction,
 )
 from knowledgeforge.main import app
-
 
 # ---------------------------------------------------------------------------
 # Schema and Model Validation Tests
 # ---------------------------------------------------------------------------
+
 
 def test_contract_extraction_valid_model():
     contract = ContractExtraction(
@@ -106,6 +102,7 @@ def test_render_fields_contract():
 # Classification Tests
 # ---------------------------------------------------------------------------
 
+
 def test_classifier_detects_contract_filename():
     classification = classify_locally("master_services_agreement.pdf", "Some random text.")
     assert classification is not None
@@ -139,6 +136,7 @@ def test_parse_classification_contract():
 # Provider and Pipeline Tests
 # ---------------------------------------------------------------------------
 
+
 def test_local_provider_extracts_contract():
     provider = LocalExtractionProvider()
     res = provider.extract("Some agreement text", schema_type="contract")
@@ -149,17 +147,19 @@ def test_local_provider_extracts_contract():
 
 
 def test_pipeline_parse_fields_contract():
-    raw = json.dumps({
-        "contract": {
-            "counterparty": "Alpha Corp",
-            "effective_date": "2026-05-01",
-            "total_value": 25000.0,
-            "currency": "USD",
-            "governing_law": "Delaware",
-            "auto_renew": False,
-        },
-        "field_confidence": {"counterparty": 0.98},
-    })
+    raw = json.dumps(
+        {
+            "contract": {
+                "counterparty": "Alpha Corp",
+                "effective_date": "2026-05-01",
+                "total_value": 25000.0,
+                "currency": "USD",
+                "governing_law": "Delaware",
+                "auto_renew": False,
+            },
+            "field_confidence": {"counterparty": 0.98},
+        }
+    )
     parsed = _parse_fields(raw, schema_type="contract")
     assert isinstance(parsed.contract, ContractExtraction)
     assert parsed.contract.counterparty == "Alpha Corp"
@@ -169,6 +169,7 @@ def test_pipeline_parse_fields_contract():
 # ---------------------------------------------------------------------------
 # Golden Set Validation Test
 # ---------------------------------------------------------------------------
+
 
 def test_contract_golden_set_structure_and_completeness():
     golden_path = Path(__file__).parents[2] / "evaluation" / "contract-golden-set.json"
@@ -191,6 +192,7 @@ def test_contract_golden_set_structure_and_completeness():
 # ---------------------------------------------------------------------------
 # API Filtering for Contracts
 # ---------------------------------------------------------------------------
+
 
 def test_api_list_extractions_with_contract_filters(monkeypatch):
     tenant_id = uuid4()
@@ -216,6 +218,7 @@ def test_api_list_extractions_with_contract_filters(monkeypatch):
     class FakeConn:
         def __enter__(self):
             return self
+
         def __exit__(self, *args):
             return False
 

@@ -34,15 +34,28 @@ SYSTEM_INSTRUCTION = (
 )
 
 
+COMPARISON_INSTRUCTION = (
+    "When comparing multiple documents, explicitly contrast the provisions, terms, "
+    "or details of each document, pointing out similarities and differences, and cite "
+    "each document individually."
+)
+
+
 def build_prompt(
     question: str,
     chunks: Sequence[LabeledChunk],
     extractions: Sequence[LabeledExtraction] = (),
 ) -> str:
     blocks: list[str] = []
+    doc_labels: set[str] = set()
     for labeled in chunks:
         blocks.append(f"[{labeled.label}, page {labeled.chunk.page}]\n{labeled.chunk.text}")
+        doc_labels.add(labeled.label)
     for labeled in extractions:
         blocks.append(f"[{labeled.label}, extracted fields]\n{labeled.render()}")
+        doc_labels.add(labeled.label)
     context = "\n\n".join(blocks)
-    return f"{SYSTEM_INSTRUCTION}\n\nContext:\n{context}\n\nQuestion: {question}"
+    instruction = SYSTEM_INSTRUCTION
+    if len(doc_labels) > 1:
+        instruction = f"{SYSTEM_INSTRUCTION} {COMPARISON_INSTRUCTION}"
+    return f"{instruction}\n\nContext:\n{context}\n\nQuestion: {question}"

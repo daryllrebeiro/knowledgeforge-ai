@@ -3,10 +3,10 @@
 import os
 import urllib.error
 import urllib.request
-import pytest
-import stripe
 
-from knowledgeforge.billing.stripe_client import create_checkout_session, create_portal_session
+import pytest
+
+from knowledgeforge.billing.stripe_client import create_checkout_session
 from knowledgeforge.config import Settings
 
 pytestmark = pytest.mark.integration

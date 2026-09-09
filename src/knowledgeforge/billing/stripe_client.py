@@ -93,9 +93,7 @@ def create_checkout_session(
         raise RuntimeError("STRIPE_SECRET_KEY must be configured when LOCAL_BILLING is disabled")
 
     price_id = (
-        settings.stripe_pro_price_id
-        if tier == "pro"
-        else settings.stripe_enterprise_price_id
+        settings.stripe_pro_price_id if tier == "pro" else settings.stripe_enterprise_price_id
     )
     if not price_id:
         price_id = f"price_{tier}_default"
@@ -148,4 +146,3 @@ def create_portal_session(
         return_url=return_url,
     )
     return str(session.url)
-

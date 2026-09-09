@@ -26,8 +26,7 @@ _REWRITE_INSTRUCTION = (
 def build_rewrite_prompt(question: str, history: Sequence[tuple[str, str]]) -> str:
     transcript = "\n".join(f"{role.capitalize()}: {content}" for role, content in history)
     return (
-        f"{_REWRITE_INSTRUCTION}\n\nConversation:\n{transcript}\n\n"
-        f"Follow-up question: {question}"
+        f"{_REWRITE_INSTRUCTION}\n\nConversation:\n{transcript}\n\nFollow-up question: {question}"
     )
 
 

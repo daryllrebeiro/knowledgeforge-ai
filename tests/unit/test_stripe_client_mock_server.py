@@ -1,6 +1,7 @@
 """Unit tests for stripe_api_base configuration and mock server interaction."""
 
 from unittest.mock import MagicMock, patch
+
 import pytest
 import stripe
 

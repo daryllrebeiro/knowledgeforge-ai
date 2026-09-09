@@ -41,9 +41,7 @@ def test_generate_answer_extracts_unique_document_and_page_citations() -> None:
 def test_generate_answer_ignores_page_only_markers() -> None:
     generator = FakeGenerator("Old format leaked: [page 2].")
 
-    result = generate_answer(
-        generator, "What?", [LabeledChunk("doc 1", TextChunk("c", page=2))]
-    )
+    result = generate_answer(generator, "What?", [LabeledChunk("doc 1", TextChunk("c", page=2))])
 
     assert result.citations == []
 
@@ -51,9 +49,7 @@ def test_generate_answer_ignores_page_only_markers() -> None:
 def test_generate_answer_carries_token_usage() -> None:
     generator = FakeGenerator("Answer. [doc 1, page 1]", input_tokens=99, output_tokens=7)
 
-    result = generate_answer(
-        generator, "What?", [LabeledChunk("doc 1", TextChunk("c", page=1))]
-    )
+    result = generate_answer(generator, "What?", [LabeledChunk("doc 1", TextChunk("c", page=1))])
 
     assert result.input_tokens == 99
     assert result.output_tokens == 7

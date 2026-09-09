@@ -24,18 +24,14 @@ def job_payload() -> bytes:
 def test_parse_job_reads_expected_fields() -> None:
     job = parse_job(job_payload())
 
-    assert job == IngestionJob(
-        UUID(DOCUMENT_ID), UUID(TENANT_ID), "gs://bucket/file.pdf", "hash"
-    )
+    assert job == IngestionJob(UUID(DOCUMENT_ID), UUID(TENANT_ID), "gs://bucket/file.pdf", "hash")
 
 
 def test_unclaimed_delivery_is_acknowledged_without_processing() -> None:
     """A duplicate redelivery loses the atomic claim and must not reprocess."""
     processed: list[IngestionJob] = []
 
-    handled = handle_delivery(
-        job_payload(), claim=lambda _: False, process=processed.append
-    )
+    handled = handle_delivery(job_payload(), claim=lambda _: False, process=processed.append)
 
     assert handled is False
     assert processed == []
@@ -44,9 +40,7 @@ def test_unclaimed_delivery_is_acknowledged_without_processing() -> None:
 def test_claimed_delivery_is_processed_once() -> None:
     processed: list[IngestionJob] = []
 
-    handled = handle_delivery(
-        job_payload(), claim=lambda _: True, process=processed.append
-    )
+    handled = handle_delivery(job_payload(), claim=lambda _: True, process=processed.append)
 
     assert handled is True
     assert len(processed) == 1

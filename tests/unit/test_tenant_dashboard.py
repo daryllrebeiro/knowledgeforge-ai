@@ -4,8 +4,8 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from knowledgeforge import api
 from knowledgeforge.main import app
@@ -33,13 +33,18 @@ class FakeCursor:
             t_id = params[0]
             if t_id in self.db.tenants:
                 t = self.db.tenants[t_id]
-                self._last_result = [(t["id"], t["name"], t["tier"], t["subscription_status"], t["created_at"])]
+                self._last_result = [
+                    (t["id"], t["name"], t["tier"], t["subscription_status"], t["created_at"])
+                ]
             else:
                 self._last_result = []
             return
 
         # Query chunks count
-        if "SELECT count(*) FROM chunks c JOIN documents d ON d.id = c.document_id WHERE d.tenant_id = %s" in q:
+        if (
+            "SELECT count(*) FROM chunks c JOIN documents d ON d.id = c.document_id WHERE d.tenant_id = %s"
+            in q
+        ):
             t_id = params[0]
             self._last_result = [(self.db.chunks.get(t_id, 0),)]
             return
@@ -67,7 +72,7 @@ class FakeCursor:
             t_id = params[0]
             logs = self.db.request_logs.get(t_id, [])
             count = len(logs)
-            total_cost = sum(l.get("cost", 0.0) for l in logs)
+            total_cost = sum(log_item.get("cost", 0.0) for log_item in logs)
             self._last_result = [(count, total_cost)]
             return
 
@@ -81,7 +86,7 @@ class FakeCursor:
         return None
 
     def fetchall(self):
-        res = self._last_result[self._idx:]
+        res = self._last_result[self._idx :]
         self._idx = len(self._last_result)
         return res
 
@@ -207,7 +212,9 @@ def test_tenant_isolation_cross_tenant_rejection(monkeypatch):
         yield FakeConnection(tenant_a, db)
 
     monkeypatch.setattr(api, "get_connection", mock_get_conn)
-    monkeypatch.setattr(api, "tenant_usage", lambda conn, tid: (1 if tid == tenant_a else 999, 0, 0.0))
+    monkeypatch.setattr(
+        api, "tenant_usage", lambda conn, tid: (1 if tid == tenant_a else 999, 0, 0.0)
+    )
 
     client = TestClient(app)
     response = client.get("/tenant/usage")

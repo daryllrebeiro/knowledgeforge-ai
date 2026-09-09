@@ -79,9 +79,7 @@ class GeminiOcrProvider:
         self._settings = settings
         self._client = genai.Client(
             api_key=settings.gemini_api_key,
-            http_options=types.HttpOptions(
-                timeout=int(settings.gemini_timeout_seconds * 1000)
-            ),
+            http_options=types.HttpOptions(timeout=int(settings.gemini_timeout_seconds * 1000)),
         )
 
     @with_retry

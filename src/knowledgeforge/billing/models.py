@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 TierType = Literal["free", "pro", "enterprise"]
 SubscriptionStatus = Literal["active", "past_due", "canceled", "unpaid", "trialing"]

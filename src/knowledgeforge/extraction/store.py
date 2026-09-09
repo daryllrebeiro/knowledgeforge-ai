@@ -6,7 +6,6 @@ from uuid import UUID
 
 from psycopg import Connection
 from psycopg.types.json import Json
-
 from pydantic import BaseModel
 
 from knowledgeforge.extraction.schemas import ContractExtraction, InvoiceExtraction
@@ -159,8 +158,7 @@ def finish_extraction_job(
 ) -> None:
     with connection.cursor() as cursor:
         cursor.execute(
-            "UPDATE extraction_jobs SET status = %s, detail = %s, updated_at = now() "
-            "WHERE id = %s",
+            "UPDATE extraction_jobs SET status = %s, detail = %s, updated_at = now() WHERE id = %s",
             (status, detail, job_id),
         )
 
@@ -245,8 +243,7 @@ def claim_outbox_batch(
 def mark_outbox_sent(connection: Connection, outbox_id: UUID) -> None:
     with connection.cursor() as cursor:
         cursor.execute(
-            "UPDATE extraction_outbox SET sent_at = now(), claimed_until = NULL "
-            "WHERE id = %s",
+            "UPDATE extraction_outbox SET sent_at = now(), claimed_until = NULL WHERE id = %s",
             (outbox_id,),
         )
 
@@ -324,7 +321,9 @@ def store_document_extraction(
     first, and this upsert is the replace-after-validation semantics a forced
     reprocess needs.
     """
-    fields_payload = extraction.model_dump(mode="json") if hasattr(extraction, "model_dump") else extraction
+    fields_payload = (
+        extraction.model_dump(mode="json") if hasattr(extraction, "model_dump") else extraction
+    )
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -418,6 +417,13 @@ EXTRACTION_FIELD_FILTERS = (
     "counterparty",
     "governing_law",
 )
+EXTRACTION_NUMERIC_RANGE_FIELDS = frozenset({"total", "total_value"})
+EXTRACTION_DATE_RANGE_FIELDS = frozenset({
+    "invoice_date",
+    "due_date",
+    "effective_date",
+    "termination_date",
+})
 
 
 def list_extractions(
@@ -474,6 +480,133 @@ def list_extractions(
         )
         for row in rows
     ]
+
+
+def list_extractions_with_ranges(
+    connection: Connection,
+    tenant_id: UUID,
+    *,
+    schema_type: str | None = None,
+    field_filters: dict[str, str] | None = None,
+    numeric_ranges: dict[str, tuple[float | None, float | None]] | None = None,
+    date_ranges: dict[str, tuple[str | None, str | None]] | None = None,
+    needs_review: bool | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[DocumentExtractionRow]:
+    """Tenant-scoped extraction listing supporting equality, numeric ranges, and date ranges."""
+    if limit <= 0 or offset < 0:
+        raise ValueError("limit must be positive and offset non-negative")
+    clauses = ["e.tenant_id = %s"]
+    params: list[object] = [tenant_id]
+    if schema_type is not None:
+        clauses.append("e.schema_type = %s")
+        params.append(schema_type)
+    if needs_review is not None:
+        clauses.append("e.needs_review = %s")
+        params.append(needs_review)
+    for field, value in (field_filters or {}).items():
+        if field not in EXTRACTION_FIELD_FILTERS:
+            raise ValueError(f"unsupported extraction filter: {field}")
+        clauses.append("e.fields->>%s = %s")
+        params.extend([field, value])
+    for field, (min_val, max_val) in (numeric_ranges or {}).items():
+        if field not in EXTRACTION_NUMERIC_RANGE_FIELDS:
+            raise ValueError(f"unsupported numeric range filter: {field}")
+        cast_expr = "NULLIF(REPLACE(e.fields->>%s, ',', ''), '')::numeric"
+        if min_val is not None:
+            clauses.append(f"{cast_expr} >= %s")
+            params.extend([field, min_val])
+        if max_val is not None:
+            clauses.append(f"{cast_expr} <= %s")
+            params.extend([field, max_val])
+    for field, (start_date, end_date) in (date_ranges or {}).items():
+        if field not in EXTRACTION_DATE_RANGE_FIELDS:
+            raise ValueError(f"unsupported date range filter: {field}")
+        if start_date is not None:
+            clauses.append("e.fields->>%s >= %s")
+            params.extend([field, start_date])
+        if end_date is not None:
+            clauses.append("e.fields->>%s <= %s")
+            params.extend([field, end_date])
+    where = " AND ".join(clauses)
+    params.extend([limit, offset])
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT e.document_id, e.schema_type, e.schema_version, e.model, e.fields,
+                   e.field_confidence, e.overall_confidence, e.needs_review, e.created_at
+            FROM document_extractions AS e
+            WHERE {where}
+            ORDER BY e.created_at DESC
+            LIMIT %s OFFSET %s
+            """,
+            tuple(params),
+        )
+        rows = cursor.fetchall()
+    return [
+        DocumentExtractionRow(
+            document_id=UUID(str(row[0])),
+            schema_type=str(row[1]),
+            schema_version=int(row[2]),
+            model=str(row[3]),
+            fields=dict(row[4]) if row[4] is not None else {},
+            field_confidence=dict(row[5]) if row[5] is not None else {},
+            overall_confidence=float(row[6]),
+            needs_review=bool(row[7]),
+            created_at=str(row[8]),
+        )
+        for row in rows
+    ]
+
+
+def find_document_ids_with_ranges(
+    connection: Connection,
+    tenant_id: UUID,
+    *,
+    schema_type: str | None = None,
+    field_filters: dict[str, str] | None = None,
+    numeric_ranges: dict[str, tuple[float | None, float | None]] | None = None,
+    date_ranges: dict[str, tuple[str | None, str | None]] | None = None,
+) -> list[UUID]:
+    """Resolve structured and range filters to document IDs with strict tenant isolation."""
+    clauses = ["e.tenant_id = %s"]
+    params: list[object] = [tenant_id]
+    if schema_type is not None:
+        clauses.append("e.schema_type = %s")
+        params.append(schema_type)
+    for field, value in (field_filters or {}).items():
+        if field not in EXTRACTION_FIELD_FILTERS:
+            raise ValueError(f"unsupported extraction filter: {field}")
+        clauses.append("e.fields->>%s = %s")
+        params.extend([field, value])
+    for field, (min_val, max_val) in (numeric_ranges or {}).items():
+        if field not in EXTRACTION_NUMERIC_RANGE_FIELDS:
+            raise ValueError(f"unsupported numeric range filter: {field}")
+        cast_expr = "NULLIF(REPLACE(e.fields->>%s, ',', ''), '')::numeric"
+        if min_val is not None:
+            clauses.append(f"{cast_expr} >= %s")
+            params.extend([field, min_val])
+        if max_val is not None:
+            clauses.append(f"{cast_expr} <= %s")
+            params.extend([field, max_val])
+    for field, (start_date, end_date) in (date_ranges or {}).items():
+        if field not in EXTRACTION_DATE_RANGE_FIELDS:
+            raise ValueError(f"unsupported date range filter: {field}")
+        if start_date is not None:
+            clauses.append("e.fields->>%s >= %s")
+            params.extend([field, start_date])
+        if end_date is not None:
+            clauses.append("e.fields->>%s <= %s")
+            params.extend([field, end_date])
+    where = " AND ".join(clauses)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT DISTINCT e.document_id FROM document_extractions AS e WHERE {where}",
+            tuple(params),
+        )
+        rows = cursor.fetchall()
+    return [UUID(str(row[0])) for row in rows]
 
 
 def find_document_ids_by_fields(
@@ -541,20 +674,22 @@ def list_all_extractions_review_admin(
 
     results: list[dict[str, Any]] = []
     for r in rows:
-        results.append({
-            "document_id": UUID(str(r[0])),
-            "tenant_id": UUID(str(r[1])),
-            "tenant_name": str(r[2]),
-            "schema_type": str(r[3]),
-            "schema_version": int(r[4]),
-            "model": str(r[5]),
-            "fields": dict(r[6]) if r[6] is not None else {},
-            "field_confidence": dict(r[7]) if r[7] is not None else {},
-            "overall_confidence": float(r[8]),
-            "needs_review": bool(r[9]),
-            "created_at": str(r[10]),
-            "extraction_history": list(r[11]) if r[11] is not None else [],
-        })
+        results.append(
+            {
+                "document_id": UUID(str(r[0])),
+                "tenant_id": UUID(str(r[1])),
+                "tenant_name": str(r[2]),
+                "schema_type": str(r[3]),
+                "schema_version": int(r[4]),
+                "model": str(r[5]),
+                "fields": dict(r[6]) if r[6] is not None else {},
+                "field_confidence": dict(r[7]) if r[7] is not None else {},
+                "overall_confidence": float(r[8]),
+                "needs_review": bool(r[9]),
+                "created_at": str(r[10]),
+                "extraction_history": list(r[11]) if r[11] is not None else [],
+            }
+        )
     return results
 
 
@@ -635,4 +770,3 @@ def correct_document_extraction(
         cursor.execute(update_query, tuple(update_params))
         connection.commit()
         return True
-

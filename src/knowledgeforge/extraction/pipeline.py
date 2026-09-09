@@ -14,7 +14,7 @@ import logging
 from io import BytesIO
 from uuid import uuid4
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from knowledgeforge.config import Settings
 from knowledgeforge.db import get_connection
@@ -257,15 +257,11 @@ def _run_extraction(event: ExtractionEvent, settings: Settings) -> None:
         )
     if doc_type not in {"invoice", "contract"}:
         # Most of a tenant's corpus is neither invoices nor contracts; expected no-op.
-        finish_extraction_job(
-            connection, event.job_id, "skipped", "unsupported_document_type"
-        )
+        finish_extraction_job(connection, event.job_id, "skipped", "unsupported_document_type")
         return
 
     schema_type = doc_type
-    parsed = _extract_fields(
-        event, content, filename, text, settings, schema_type=schema_type
-    )
+    parsed = _extract_fields(event, content, filename, text, settings, schema_type=schema_type)
     confidence_values = list(parsed.field_confidence.values())
     overall = min(confidence_values) if confidence_values else 1.0
     needs_review = overall < settings.extraction_overall_confidence_threshold or any(

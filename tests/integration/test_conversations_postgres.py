@@ -46,9 +46,7 @@ def test_conversations_are_tenant_scoped_and_persist_exchanges(database_url: str
             )
 
             # Owner sees the exchange...
-            messages = get_conversation_messages(
-                connection, conversation.conversation_id, tenant_a
-            )
+            messages = get_conversation_messages(connection, conversation.conversation_id, tenant_a)
             assert messages is not None
             assert [message.role for message in messages] == ["user", "assistant"]
             assistant_citations = messages[1].citations
@@ -85,6 +83,4 @@ def test_conversations_are_tenant_scoped_and_persist_exchanges(database_url: str
     finally:
         with psycopg.connect(database_url) as connection:
             with connection.transaction():
-                connection.execute(
-                    "DELETE FROM tenants WHERE id IN (%s, %s)", (tenant_a, tenant_b)
-                )
+                connection.execute("DELETE FROM tenants WHERE id IN (%s, %s)", (tenant_a, tenant_b))

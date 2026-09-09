@@ -1,7 +1,7 @@
-from io import BytesIO
 import zipfile
-import pytest
+from io import BytesIO
 
+import pytest
 from docx import Document
 from pptx import Presentation
 

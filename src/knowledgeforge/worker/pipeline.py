@@ -13,6 +13,7 @@ from knowledgeforge.ingestion.extract import extract_pdf
 from knowledgeforge.ingestion.extract_csv import CSVExtractionError, extract_csv
 from knowledgeforge.ingestion.extract_docx import DOCXExtractionError, extract_docx
 from knowledgeforge.ingestion.extract_markdown import extract_markdown
+from knowledgeforge.ingestion.extract_ocr import build_ocr_provider, is_image_upload, mime_type_for
 from knowledgeforge.ingestion.extract_pptx import PPTXExtractionError, extract_pptx
 from knowledgeforge.ingestion.extract_text import extract_html, extract_text
 from knowledgeforge.ingestion.jobs import IngestionJob
@@ -30,6 +31,7 @@ def _build_worker_redis_client(settings: Settings) -> object | None:
         return None
     try:
         import redis  # type: ignore[import-not-found]
+
         return redis.Redis.from_url(settings.redis_url, decode_responses=True)
     except ImportError:
         return None
@@ -95,14 +97,18 @@ def process_ingestion_job(job: IngestionJob, settings: Settings) -> None:
             )
             # Cached: identical chunk text (a re-ingestion, or the same content
             # under a new version) skips the embedding call entirely.
-            embeddings = _gemini_breaker(settings).call(
-                lambda: embed_texts_cached(
-                    connection,
-                    client,
-                    [chunk.text for chunk in chunks],
-                    model=settings.gemini_embedding_model,
+            embeddings = (
+                _gemini_breaker(settings)
+                .call(
+                    lambda: embed_texts_cached(
+                        connection,
+                        client,
+                        [chunk.text for chunk in chunks],
+                        model=settings.gemini_embedding_model,
+                    )
                 )
-            ).vectors
+                .vectors
+            )
         # Delete-and-insert runs as one transaction so a crash cannot leave a
         # claimed document with zero chunks, and the claim lease (see
         # store.claim_document) prevents concurrent double-inserts.
@@ -149,9 +155,7 @@ def _ocr_pages(
     from uuid import uuid4
 
     provider = build_ocr_provider(settings)
-    result = _gemini_breaker(settings).call(
-        lambda: provider.ocr(content, mime_type_for(filename))
-    )
+    result = _gemini_breaker(settings).call(lambda: provider.ocr(content, mime_type_for(filename)))
     try:
         with psycopg.connect(settings.database_url) as connection:
             record_request_log(

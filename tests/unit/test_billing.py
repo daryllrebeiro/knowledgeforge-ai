@@ -1,19 +1,20 @@
 """Unit tests for billing, tiered access, Stripe webhook idempotency, and dynamic budgets."""
 
-from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
 import time
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from fastapi import HTTPException
 import pytest
+from fastapi.testclient import TestClient
 
+from knowledgeforge import api
 from knowledgeforge.billing.service import (
     claim_webhook_event,
     get_tenant_billing_info,
     process_stripe_event,
-    update_tenant_tier_admin,
 )
 from knowledgeforge.billing.stripe_client import (
     create_checkout_session,
@@ -21,16 +22,16 @@ from knowledgeforge.billing.stripe_client import (
     verify_stripe_signature,
 )
 from knowledgeforge.config import get_settings
+from knowledgeforge.main import app
 from knowledgeforge.security.budget import (
     RedisBudgetCounter,
-    get_tenant_budget_limits,
 )
 from tests.unit.test_budget import MockRedisBudget
-
 
 # ---------------------------------------------------------------------------
 # In-memory mock DB connection for billing queries
 # ---------------------------------------------------------------------------
+
 
 class MockCursor:
     def __init__(self, db: "MockDB"):
@@ -120,12 +121,18 @@ class MockCursor:
         # SELECT for resolve tenant by customer or subscription
         elif "SELECT id FROM tenants WHERE stripe_customer_id = %s" in q:
             cust_id = params[0]
-            found = [tid for tid, t in self.db.tenants.items() if t.get("stripe_customer_id") == cust_id]
+            found = [
+                tid for tid, t in self.db.tenants.items() if t.get("stripe_customer_id") == cust_id
+            ]
             self._last_result = [(found[0],)] if found else []
 
         elif "SELECT id FROM tenants WHERE stripe_subscription_id = %s" in q:
             sub_id = params[0]
-            found = [tid for tid, t in self.db.tenants.items() if t.get("stripe_subscription_id") == sub_id]
+            found = [
+                tid
+                for tid, t in self.db.tenants.items()
+                if t.get("stripe_subscription_id") == sub_id
+            ]
             self._last_result = [(found[0],)] if found else []
 
         # UPDATE tenants SET tier = %s ... WHERE id = %s
@@ -151,7 +158,10 @@ class MockCursor:
             sub_id = params[idx]
             cust_id = params[idx + 1]
             for t in self.db.tenants.values():
-                if t.get("stripe_subscription_id") == sub_id or t.get("stripe_customer_id") == cust_id:
+                if (
+                    t.get("stripe_subscription_id") == sub_id
+                    or t.get("stripe_customer_id") == cust_id
+                ):
                     t["subscription_status"] = status
                     if period_end:
                         t["current_period_end"] = period_end
@@ -162,7 +172,10 @@ class MockCursor:
         elif "UPDATE tenants SET tier = 'free', subscription_status = 'canceled'" in q:
             sub_id, cust_id = params[0], params[1]
             for t in self.db.tenants.values():
-                if t.get("stripe_subscription_id") == sub_id or t.get("stripe_customer_id") == cust_id:
+                if (
+                    t.get("stripe_subscription_id") == sub_id
+                    or t.get("stripe_customer_id") == cust_id
+                ):
                     t["tier"] = "free"
                     t["subscription_status"] = "canceled"
                     t["stripe_subscription_id"] = None
@@ -183,7 +196,9 @@ class MockCursor:
             self._last_result = []
 
         # Admin update
-        elif "UPDATE tenants SET tier = %s, subscription_status = %s WHERE id = %s RETURNING id" in q:
+        elif (
+            "UPDATE tenants SET tier = %s, subscription_status = %s WHERE id = %s RETURNING id" in q
+        ):
             tier, status, tenant_id = str(params[0]), str(params[1]), params[2]
             if tenant_id in self.db.tenants:
                 self.db.tenants[tenant_id]["tier"] = tier
@@ -261,12 +276,13 @@ class MockDB:
 # Test Cases
 # ---------------------------------------------------------------------------
 
+
 def test_stripe_signature_verification_valid():
     secret = "whsec_test_secret_key_12345"
     payload = b'{"id": "evt_test", "type": "checkout.session.completed"}'
     now = int(time.time())
 
-    signed = f"{now}.".encode("utf-8") + payload
+    signed = f"{now}.".encode() + payload
     sig = hmac.new(secret.encode("utf-8"), signed, hashlib.sha256).hexdigest()
     sig_header = f"t={now},v1={sig}"
 
@@ -277,7 +293,7 @@ def test_stripe_signature_verification_invalid_secret():
     secret = "whsec_test_secret_key_12345"
     payload = b'{"id": "evt_test"}'
     now = int(time.time())
-    signed = f"{now}.".encode("utf-8") + payload
+    signed = f"{now}.".encode() + payload
     sig = hmac.new(b"wrong_secret", signed, hashlib.sha256).hexdigest()
     sig_header = f"t={now},v1={sig}"
 
@@ -289,7 +305,7 @@ def test_stripe_signature_verification_expired_timestamp():
     payload = b'{"id": "evt_test"}'
     # Timestamp is 10 minutes ago (tolerance is 5 min / 300s)
     old_time = int(time.time()) - 600
-    signed = f"{old_time}.".encode("utf-8") + payload
+    signed = f"{old_time}.".encode() + payload
     sig = hmac.new(secret.encode("utf-8"), signed, hashlib.sha256).hexdigest()
     sig_header = f"t={old_time},v1={sig}"
 
@@ -300,7 +316,7 @@ def test_stripe_signature_multi_v1_rotation():
     secret = "whsec_test_secret_key_12345"
     payload = b'{"id": "evt_test"}'
     now = int(time.time())
-    signed = f"{now}.".encode("utf-8") + payload
+    signed = f"{now}.".encode() + payload
     valid_sig = hmac.new(secret.encode("utf-8"), signed, hashlib.sha256).hexdigest()
     sig_header = f"t={now},v1=bad_old_sig_abc123,v1={valid_sig}"
 
@@ -489,12 +505,6 @@ def test_checkout_and_portal_session_mock_mode():
 # API Route Tests (TestClient)
 # ---------------------------------------------------------------------------
 
-from contextlib import contextmanager
-from fastapi.testclient import TestClient
-from knowledgeforge import api
-from knowledgeforge.main import app
-from knowledgeforge.security.auth import create_access_token
-
 
 @contextmanager
 def _mock_billing_db(db: MockDB):
@@ -510,9 +520,7 @@ def test_api_stripe_webhook_rejects_when_secret_unset(monkeypatch):
         "subscription_status": "active",
     }
     monkeypatch.setattr(api, "get_connection", lambda: _mock_billing_db(db))
-    settings = get_settings().model_copy(
-        update={"stripe_webhook_secret": ""}
-    )
+    settings = get_settings().model_copy(update={"stripe_webhook_secret": ""})
     monkeypatch.setattr(api, "get_settings", lambda: settings)
 
     client = TestClient(app)
@@ -520,7 +528,7 @@ def test_api_stripe_webhook_rejects_when_secret_unset(monkeypatch):
     payload = (
         f'{{"id": "evt_fake", "type": "checkout.session.completed", '
         f'"data": {{"object": {{"client_reference_id": "{tenant_id}", "metadata": {{"tier": "pro"}}}}}}}}'
-    ).encode("utf-8")
+    ).encode()
 
     res = client.post("/billing/webhook", content=payload)
     assert res.status_code == 503
@@ -532,9 +540,7 @@ def test_api_stripe_webhook_rejects_when_secret_unset(monkeypatch):
 def test_api_stripe_webhook_rejects_invalid_signature(monkeypatch):
     db = MockDB()
     monkeypatch.setattr(api, "get_connection", lambda: _mock_billing_db(db))
-    settings = get_settings().model_copy(
-        update={"stripe_webhook_secret": "whsec_test_secret_123"}
-    )
+    settings = get_settings().model_copy(update={"stripe_webhook_secret": "whsec_test_secret_123"})
     monkeypatch.setattr(api, "get_settings", lambda: settings)
 
     client = TestClient(app)
@@ -558,18 +564,18 @@ def test_api_stripe_webhook_accepts_valid_signature(monkeypatch):
     }
     monkeypatch.setattr(api, "get_connection", lambda: _mock_billing_db(db))
     secret = "whsec_test_secret_123"
-    settings = get_settings().model_copy(
-        update={"stripe_webhook_secret": secret}
-    )
+    settings = get_settings().model_copy(update={"stripe_webhook_secret": secret})
     monkeypatch.setattr(api, "get_settings", lambda: settings)
 
     raw_payload = (
         f'{{"id": "evt_api_1", "type": "checkout.session.completed", '
         f'"data": {{"object": {{"client_reference_id": "{tenant_id}", "customer": "cus_1", "subscription": "sub_1", "metadata": {{"tier": "pro"}}}}}}}}'
-    ).encode("utf-8")
+    ).encode()
 
     now = int(time.time())
-    sig = hmac.new(secret.encode("utf-8"), f"{now}.".encode("utf-8") + raw_payload, hashlib.sha256).hexdigest()
+    sig = hmac.new(
+        secret.encode("utf-8"), f"{now}.".encode() + raw_payload, hashlib.sha256
+    ).hexdigest()
 
     client = TestClient(app)
     res = client.post(
@@ -671,13 +677,16 @@ def test_api_admin_billing_requires_platform_admin(monkeypatch):
 
 def test_local_billing_flag_refused_outside_dev():
     from tests.unit.test_config import make_settings
+
     with pytest.raises(RuntimeError, match="LOCAL_BILLING may only be used in development"):
         make_settings(environment="production", local_billing=True).validate_runtime()
 
 
 def test_stripe_checkout_session_real_sdk_call(monkeypatch):
-    import stripe
     from unittest.mock import MagicMock
+
+    import stripe
+
     from knowledgeforge.billing import stripe_client
 
     mock_session = MagicMock()
@@ -708,8 +717,10 @@ def test_stripe_checkout_session_real_sdk_call(monkeypatch):
 
 
 def test_stripe_portal_session_real_sdk_call(monkeypatch):
-    import stripe
     from unittest.mock import MagicMock
+
+    import stripe
+
     from knowledgeforge.billing import stripe_client
 
     mock_portal = MagicMock()
@@ -750,4 +761,3 @@ def test_stripe_sessions_require_secret_key_outside_dev(monkeypatch):
 
     with pytest.raises(RuntimeError, match="STRIPE_SECRET_KEY must be configured"):
         create_portal_session("cus_1", "http://ok")
-

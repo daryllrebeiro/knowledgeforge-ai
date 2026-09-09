@@ -1,3 +1,4 @@
+import json
 from collections.abc import Sequence
 from typing import Any, NamedTuple
 from uuid import UUID
@@ -62,11 +63,22 @@ def store_document(
             document_id = UUID(str(row[0]))
             cursor.executemany(
                 """
-                INSERT INTO chunks (document_id, page, section, chunk_text, embedding)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO chunks (document_id, page, section, chunk_text, embedding, bounding_boxes, modality, image_storage_uri, start_char, end_char)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 [
-                    (document_id, chunk.page, chunk.section, chunk.text, list(embedding))
+                    (
+                        document_id,
+                        chunk.page,
+                        chunk.section,
+                        chunk.text,
+                        list(embedding),
+                        json.dumps(list(chunk.bounding_boxes)),
+                        getattr(chunk, "modality", "text"),
+                        getattr(chunk, "image_storage_uri", None),
+                        getattr(chunk, "start_char", None),
+                        getattr(chunk, "end_char", None),
+                    )
                     for chunk, embedding in zip(chunks, embeddings, strict=True)
                 ],
             )
@@ -123,11 +135,22 @@ def store_chunks(
         with connection.cursor() as cursor:
             cursor.executemany(
                 """
-                INSERT INTO chunks (document_id, page, section, chunk_text, embedding)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO chunks (document_id, page, section, chunk_text, embedding, bounding_boxes, modality, image_storage_uri, start_char, end_char)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 [
-                    (document_id, chunk.page, chunk.section, chunk.text, list(embedding))
+                    (
+                        document_id,
+                        chunk.page,
+                        chunk.section,
+                        chunk.text,
+                        list(embedding),
+                        json.dumps(list(chunk.bounding_boxes)),
+                        getattr(chunk, "modality", "text"),
+                        getattr(chunk, "image_storage_uri", None),
+                        getattr(chunk, "start_char", None),
+                        getattr(chunk, "end_char", None),
+                    )
                     for chunk, embedding in zip(chunks, embeddings, strict=True)
                 ],
             )
@@ -216,6 +239,66 @@ class ChunkPreviewRow(NamedTuple):
     page: int
     section: str | None
     text: str
+    start_char: int | None = None
+    end_char: int | None = None
+    bounding_boxes: list[dict[str, Any]] = []
+
+
+class DocumentContentData(NamedTuple):
+    document_id: UUID
+    title: str
+    doc_type: str
+    storage_uri: str | None
+    chunks: list[dict[str, Any]]
+
+
+def get_document_content_and_chunks(
+    connection: Connection,
+    document_id: UUID,
+    tenant_id: UUID,
+) -> DocumentContentData | None:
+    """Retrieve document metadata and all chunks with character offsets and bounding boxes."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT title, doc_type, storage_uri FROM documents WHERE id = %s AND tenant_id = %s",
+            (document_id, tenant_id),
+        )
+        doc_row = cursor.fetchone()
+        if doc_row is None:
+            return None
+        title = str(doc_row[0])
+        doc_type = str(doc_row[1])
+        storage_uri = None if doc_row[2] is None else str(doc_row[2])
+        cursor.execute(
+            """
+            SELECT id, page, section, chunk_text, start_char, end_char, bounding_boxes
+            FROM chunks
+            WHERE document_id = %s
+            ORDER BY page, id
+            """,
+            (document_id,),
+        )
+        chunk_rows = cursor.fetchall()
+
+    chunks_data = [
+        {
+            "id": UUID(str(r[0])),
+            "page": int(r[1]),
+            "section": None if r[2] is None else str(r[2]),
+            "text": str(r[3]),
+            "start_char": r[4] if r[4] is not None else None,
+            "end_char": r[5] if r[5] is not None else None,
+            "bounding_boxes": list(r[6]) if r[6] is not None else [],
+        }
+        for r in chunk_rows
+    ]
+    return DocumentContentData(
+        document_id=document_id,
+        title=title,
+        doc_type=doc_type,
+        storage_uri=storage_uri,
+        chunks=chunks_data,
+    )
 
 
 def list_document_chunks(
@@ -241,7 +324,7 @@ def list_document_chunks(
             return None
         cursor.execute(
             """
-            SELECT page, section, chunk_text FROM chunks
+            SELECT page, section, chunk_text, start_char, end_char, bounding_boxes FROM chunks
             WHERE document_id = %s
             ORDER BY page, id
             LIMIT %s OFFSET %s
@@ -251,7 +334,12 @@ def list_document_chunks(
         rows = cursor.fetchall()
     return [
         ChunkPreviewRow(
-            page=int(row[0]), section=None if row[1] is None else str(row[1]), text=str(row[2])
+            page=int(row[0]),
+            section=None if row[1] is None else str(row[1]),
+            text=str(row[2]),
+            start_char=row[3] if len(row) > 3 and row[3] is not None else None,
+            end_char=row[4] if len(row) > 4 and row[4] is not None else None,
+            bounding_boxes=list(row[5]) if len(row) > 5 and row[5] is not None else [],
         )
         for row in rows
     ]
@@ -536,21 +624,23 @@ def export_tenant_data(connection: Connection, tenant_id: UUID) -> dict[str, Any
                 (cid,),
             )
             msg_rows = cursor.fetchall()
-            conversations.append({
-                "id": str(cid),
-                "title": c[1],
-                "created_at": str(c[2]),
-                "updated_at": str(c[3]),
-                "messages": [
-                    {
-                        "role": m[0],
-                        "content": m[1],
-                        "citations": list(m[2]) if m[2] is not None else [],
-                        "created_at": str(m[3]),
-                    }
-                    for m in msg_rows
-                ],
-            })
+            conversations.append(
+                {
+                    "id": str(cid),
+                    "title": c[1],
+                    "created_at": str(c[2]),
+                    "updated_at": str(c[3]),
+                    "messages": [
+                        {
+                            "role": m[0],
+                            "content": m[1],
+                            "citations": list(m[2]) if m[2] is not None else [],
+                            "created_at": str(m[3]),
+                        }
+                        for m in msg_rows
+                    ],
+                }
+            )
 
         # 6. API Keys (redacted)
         cursor.execute(
@@ -744,6 +834,7 @@ def count_documents(connection: Connection, tenant_id: UUID) -> int:
 
 
 # Admin functions (cross-tenant)
+
 
 class AdminTenantRow(NamedTuple):
     tenant_id: UUID

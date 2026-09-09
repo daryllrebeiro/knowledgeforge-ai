@@ -189,7 +189,9 @@ def test_version_chain_survives_intermediate_delete(monkeypatch) -> None:
     monkeypatch.setattr(
         api,
         "delete_document",
-        lambda connection, document_id, tenant_id: (True, None) if document_id == V2 else (False, None),
+        lambda connection, document_id, tenant_id: (
+            (True, None) if document_id == V2 else (False, None)
+        ),
     )
 
     client = TestClient(app)
@@ -201,7 +203,9 @@ def test_version_chain_survives_intermediate_delete(monkeypatch) -> None:
     def fake_list_documents_after_delete(connection, tenant_id, *, limit=50, offset=0):
         return [
             DocumentSummaryRow(V3, "doc_v3.txt", "text", "ready", 3, None),
-            DocumentSummaryRow(V1, "doc_v1.txt", "text", "ready", 1, str(V3)),  # v1 now points to v3
+            DocumentSummaryRow(
+                V1, "doc_v1.txt", "text", "ready", 1, str(V3)
+            ),  # v1 now points to v3
         ]
 
     monkeypatch.setattr(api, "list_documents", fake_list_documents_after_delete)

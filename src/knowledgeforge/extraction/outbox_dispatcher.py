@@ -19,9 +19,7 @@ from knowledgeforge.worker.cloud import PubSubPublisher
 logger = logging.getLogger("knowledgeforge.extraction.outbox")
 
 
-def dispatch_once(
-    *, batch_size: int, lease_seconds: int
-) -> int:
+def dispatch_once(*, batch_size: int, lease_seconds: int) -> int:
     """Claim, publish, and mark one batch. Returns the number of events sent."""
     settings = get_settings()
     with get_connection() as connection:

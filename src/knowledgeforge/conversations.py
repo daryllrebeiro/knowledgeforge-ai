@@ -77,8 +77,7 @@ def get_conversation(
 ) -> ConversationRow | None:
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT id, title, updated_at FROM conversations "
-            "WHERE id = %s AND tenant_id = %s",
+            "SELECT id, title, updated_at FROM conversations WHERE id = %s AND tenant_id = %s",
             (conversation_id, tenant_id),
         )
         row = cursor.fetchone()
@@ -131,8 +130,7 @@ def append_exchange(
     with connection.transaction():
         with connection.cursor() as cursor:
             cursor.execute(
-                "UPDATE conversations SET updated_at = now() "
-                "WHERE id = %s AND tenant_id = %s",
+                "UPDATE conversations SET updated_at = now() WHERE id = %s AND tenant_id = %s",
                 (conversation_id, tenant_id),
             )
             if cursor.rowcount != 1:

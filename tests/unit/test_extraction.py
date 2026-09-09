@@ -224,7 +224,9 @@ def test_run_extraction_records_failure_and_skips_non_invoice(
     monkeypatch.setattr(pipeline, "claim_extraction_job", lambda c, j: True)
     monkeypatch.setattr(pipeline, "has_successful_extraction", lambda connection, **kw: False)
     monkeypatch.setattr(
-        pipeline, "get_document_storage_uri", lambda connection, document_id, tenant_id: "gs://b/f.pdf"
+        pipeline,
+        "get_document_storage_uri",
+        lambda connection, document_id, tenant_id: "gs://b/f.pdf",
     )
 
     class FakeStorage:
@@ -238,9 +240,7 @@ def test_run_extraction_records_failure_and_skips_non_invoice(
     monkeypatch.setattr(
         pipeline, "_classify", lambda event, filename, text, settings: ("unclassified", 0.9)
     )
-    monkeypatch.setattr(
-        pipeline, "set_document_classification", lambda *args, **kwargs: None
-    )
+    monkeypatch.setattr(pipeline, "set_document_classification", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         pipeline,
         "finish_extraction_job",

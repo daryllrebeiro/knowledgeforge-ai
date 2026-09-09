@@ -79,7 +79,8 @@ def retrieve_chunks(
         if not question:
             raise ValueError("hybrid retrieval requires the question text")
         query = f"""
-            SELECT c.id, c.document_id, c.page, c.section, c.chunk_text
+            SELECT c.id, c.document_id, c.page, c.section, c.chunk_text,
+                   COALESCE(c.bounding_boxes, '[]'::jsonb)
             FROM chunks AS c
             JOIN documents AS d ON d.id = c.document_id
             {filters}
@@ -90,7 +91,8 @@ def retrieve_chunks(
         final_params = (*filter_params, embedding, hybrid_lexical_weight, question, limit)
     else:
         query = f"""
-            SELECT c.id, c.document_id, c.page, c.section, c.chunk_text
+            SELECT c.id, c.document_id, c.page, c.section, c.chunk_text,
+                   COALESCE(c.bounding_boxes, '[]'::jsonb)
             FROM chunks AS c
             JOIN documents AS d ON d.id = c.document_id
             {filters}
@@ -106,6 +108,15 @@ def retrieve_chunks(
         cursor.execute(query, final_params)
         rows = cursor.fetchall()
     return [
-        (chunk_id, document_id, TextChunk(text=chunk_text, page=page, section=section))
-        for chunk_id, document_id, page, section, chunk_text in rows
+        (
+            chunk_id,
+            document_id,
+            TextChunk(
+                text=chunk_text,
+                page=page,
+                section=section,
+                bounding_boxes=tuple(raw_boxes) if isinstance(raw_boxes, list) else (),
+            ),
+        )
+        for chunk_id, document_id, page, section, chunk_text, raw_boxes in rows
     ]

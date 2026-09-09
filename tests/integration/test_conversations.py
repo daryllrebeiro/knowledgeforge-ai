@@ -111,7 +111,9 @@ def test_conversation_detail_returns_messages_with_citations(monkeypatch) -> Non
     body = response.json()
     assert body["title"] == "Quarterly review"
     assert [message["role"] for message in body["messages"]] == ["user", "assistant"]
-    assert body["messages"][1]["citations"] == [{"document_id": str(DOCUMENT_ID), "page": 4}]
+    assert body["messages"][1]["citations"] == [
+        {"document_id": str(DOCUMENT_ID), "page": 4, "highlights": []}
+    ]
 
 
 def test_delete_conversation_returns_404_for_other_tenant(monkeypatch) -> None:
@@ -346,7 +348,7 @@ def test_citation_attribution_across_turns_with_shared_page_number(monkeypatch) 
     body1 = response1.json()
     assert body1["conversation_id"] == str(CONVERSATION_ID)
     # Should cite document A (the first document retrieved gets doc number 1)
-    assert body1["citations"] == [{"document_id": str(DOC_A), "page": 4}]
+    assert body1["citations"] == [{"document_id": str(DOC_A), "page": 4, "highlights": []}]
     assert len(persisted_exchanges) == 1
     assert persisted_exchanges[0]["citations"] == [{"document_id": str(DOC_A), "page": 4}]
 
@@ -357,7 +359,12 @@ def test_citation_attribution_across_turns_with_shared_page_number(monkeypatch) 
         "get_conversation_messages",
         lambda *args, **kwargs: [
             MessageRow("user", "What is in document A?", [], "2026-09-03T00:00:01+00:00"),
-            MessageRow("assistant", "Answer from doc A. [doc 1, page 4]", [{"document_id": str(DOC_A), "page": 4}], "2026-09-03T00:00:02+00:00"),
+            MessageRow(
+                "assistant",
+                "Answer from doc A. [doc 1, page 4]",
+                [{"document_id": str(DOC_A), "page": 4}],
+                "2026-09-03T00:00:02+00:00",
+            ),
         ],
     )
     monkeypatch.setattr(
@@ -381,7 +388,7 @@ def test_citation_attribution_across_turns_with_shared_page_number(monkeypatch) 
     body2 = response2.json()
     assert body2["conversation_id"] == str(CONVERSATION_ID)
     # Should cite document B (now the first retrieved document gets doc number 1)
-    assert body2["citations"] == [{"document_id": str(DOC_B), "page": 4}]
+    assert body2["citations"] == [{"document_id": str(DOC_B), "page": 4, "highlights": []}]
     assert len(persisted_exchanges) == 2
     assert persisted_exchanges[1]["citations"] == [{"document_id": str(DOC_B), "page": 4}]
 
@@ -410,7 +417,11 @@ def test_rewrite_failure_degrades_to_raw_question(monkeypatch) -> None:
 
     monkeypatch.setattr(api, "embed_texts", fake_embed)
     monkeypatch.setattr(
-        api, "retrieve_chunks", lambda *args, **kwargs: [(CHUNK_ID, DOCUMENT_ID, TextChunk("Self-contained answer content", 4))]
+        api,
+        "retrieve_chunks",
+        lambda *args, **kwargs: [
+            (CHUNK_ID, DOCUMENT_ID, TextChunk("Self-contained answer content", 4))
+        ],
     )
     monkeypatch.setattr(
         api,
