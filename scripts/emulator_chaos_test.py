@@ -85,9 +85,9 @@ def upload_markdown(token: str) -> str:
 
 def poll_until_ready(token: str, document_id: str, timeout_seconds: int = 90) -> None:
     for _ in range(timeout_seconds):
-        status = request(
-            f"/documents/{document_id}", headers={"Authorization": f"Bearer {token}"}
-        )["status"]
+        status = request(f"/documents/{document_id}", headers={"Authorization": f"Bearer {token}"})[
+            "status"
+        ]
         if status == "ready":
             return
         if status == "failed":
@@ -204,9 +204,7 @@ def extraction_storm_drill(burst: int = 5) -> None:
                 f"/documents/{document_id}/extraction",
                 headers={"Authorization": f"Bearer {token}"},
             )
-            print(
-                "extraction-storm: burst dead-lettered; a valid extraction still completed"
-            )
+            print("extraction-storm: burst dead-lettered; a valid extraction still completed")
             return
         except SystemExit:
             raise

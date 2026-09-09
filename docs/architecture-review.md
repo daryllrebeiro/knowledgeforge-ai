@@ -59,11 +59,9 @@ The root cause is upstream: the prompt (`generation/prompt.py:13-15`) identifies
 `src/knowledgeforge/ingestion/store.py:190-198` + `src/knowledgeforge/api.py:393-395`
 
 ```python
-cursor.execute(
-    "DELETE FROM documents WHERE id = %s AND tenant_id = %s RETURNING storage_uri", ...
-)
+cursor.execute("DELETE FROM documents WHERE id = %s AND tenant_id = %s RETURNING storage_uri", ...)
 ...
-return None if row is None else row[0]      # row[0] is NULL for sync-ingested docs
+return None if row is None else row[0]  # row[0] is NULL for sync-ingested docs
 ```
 
 `storage_uri` is `NULL` for every document ingested through the synchronous path (the default; `ASYNC_INGESTION=false`). The delete commits, `RETURNING` yields a row whose single column is `NULL`, `delete_document` returns `None`, and the API maps `None` to 404 "Document not found." The tenant sees a failure; the document is gone. The two-`None` meanings ("no row" vs. "no storage URI") must be distinguished — e.g. `RETURNING id, storage_uri` and branch on row presence.

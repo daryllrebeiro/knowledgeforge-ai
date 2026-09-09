@@ -1,5 +1,4 @@
 from pathlib import Path
-import pytest
 
 from scripts.verify_decisions import verify_decisions_integrity
 
@@ -19,7 +18,10 @@ def test_decisions_flags_uncited_numeric_claim(tmp_path: Path):
     )
     violations = verify_decisions_integrity(fake_decisions)
     assert len(violations) == 1
-    assert "Uncertified numeric claim in section '## 2026-09-08 — Fabricated Metric Benchmark'" in violations[0]
+    assert (
+        "Uncertified numeric claim in section '## 2026-09-08 — Fabricated Metric Benchmark'"
+        in violations[0]
+    )
 
 
 def test_decisions_accepts_grounded_citation(tmp_path: Path):
@@ -56,6 +58,29 @@ def test_decisions_flags_phantom_citation(tmp_path: Path):
     )
     violations = verify_decisions_integrity(fake_decisions)
     assert len(violations) == 1
-    assert "Phantom citation in section '## 2026-09-08 — Phantom Citation Benchmark'" in violations[0]
+    assert (
+        "Phantom citation in section '## 2026-09-08 — Phantom Citation Benchmark'" in violations[0]
+    )
     assert "phantom_runner_never_existed.py" in violations[0]
+
+
+def test_qualitative_absolutes_flags_unhedged_claims(tmp_path: Path):
+    from scripts.verify_decisions import verify_qualitative_absolutes
+
+    doc = tmp_path / "spec.md"
+    doc.write_text(
+        "# Spec\n\nOur system has zero risk and data leakage is structurally impossible.\n",
+        encoding="utf-8",
+    )
+    violations = verify_qualitative_absolutes([doc])
+    assert len(violations) >= 2
+    assert any("zero risk" in v for v in violations)
+    assert any("structurally impossible" in v for v in violations)
+
+
+def test_qualitative_absolutes_passes_on_hedged_docs():
+    from scripts.verify_decisions import verify_qualitative_absolutes
+
+    violations = verify_qualitative_absolutes()
+    assert not violations, f"Committed markdown files contain unhedged absolutes: {violations}"
 

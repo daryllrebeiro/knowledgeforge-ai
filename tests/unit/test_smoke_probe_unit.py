@@ -1,8 +1,7 @@
 """Unit tests for Item 15: Deploy smoke test probe utilities and isolation checks."""
 
-from unittest.mock import MagicMock, patch
 import urllib.error
-import pytest
+from unittest.mock import MagicMock, patch
 
 from scripts.deploy_smoke_test import request
 

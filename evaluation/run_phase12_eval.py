@@ -27,6 +27,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+from evaluation.chunking_profiles import PROFILES
 from knowledgeforge.config import get_settings
 from knowledgeforge.generation.gemini import GeminiTextGenerator
 from knowledgeforge.generation.generate import GeneratedAnswer, generate_answer
@@ -34,25 +35,27 @@ from knowledgeforge.generation.prompt import LabeledChunk
 from knowledgeforge.ingestion.chunk import TextChunk, chunk_pages
 from knowledgeforge.ingestion.embed import embed_texts, embed_texts_local
 
-from evaluation.chunking_profiles import PROFILES
-
 ROOT = Path(__file__).resolve().parents[1]
 REFUSAL_MARKER = "i don't have enough information"
 
 
 class QuotaExhaustedError(Exception):
     """Raised when Gemini API quota or credits are exhausted (429 RESOURCE_EXHAUSTED)."""
+
     pass
 
 
 class SpendLimitReached(Exception):
     """Raised when evaluation spend exceeds configured maximum USD limit."""
+
     pass
 
 
 def is_quota_exhausted_error(exc: Exception) -> bool:
     msg = str(exc).lower()
-    return any(term in msg for term in ("429", "resource_exhausted", "quota", "credits are depleted"))
+    return any(
+        term in msg for term in ("429", "resource_exhausted", "quota", "credits are depleted")
+    )
 
 
 class CheckpointTracker:
@@ -84,7 +87,9 @@ class CheckpointTracker:
         out_tokens = max(1, output_chars // 4)
         cost = (in_tokens * self.input_token_cost) + (out_tokens * self.output_token_cost)
         self.data["total_spend_usd"] = round(self.data.get("total_spend_usd", 0.0) + cost, 6)
-        self.data["total_tokens_used"] = self.data.get("total_tokens_used", 0) + in_tokens + out_tokens
+        self.data["total_tokens_used"] = (
+            self.data.get("total_tokens_used", 0) + in_tokens + out_tokens
+        )
         self.save()
         if self.max_spend_usd > 0.0 and self.data["total_spend_usd"] >= self.max_spend_usd:
             raise SpendLimitReached(
@@ -104,7 +109,6 @@ class CheckpointTracker:
     def save(self) -> None:
         self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         self.checkpoint_path.write_text(json.dumps(self.data, indent=2) + "\n", encoding="utf-8")
-
 
 
 def cosine(left: list[float], right: list[float]) -> float:
@@ -190,7 +194,9 @@ def evaluate_profile(
                 client, [case["question"] for case in golden], model=settings.gemini_embedding_model
             )
             if tracker:
-                total_in_chars = sum(len(t) for t in texts) + sum(len(c["question"]) for c in golden)
+                total_in_chars = sum(len(t) for t in texts) + sum(
+                    len(c["question"]) for c in golden
+                )
                 tracker.record_spend(total_in_chars, 0)
     except Exception as exc:
         if is_quota_exhausted_error(exc):
@@ -362,7 +368,9 @@ def main(argv: list[str] | None = None) -> int:
         default=ROOT / "docs/phase12-eval-checkpoint.json",
         help="Path to save incremental checkpoints",
     )
-    parser.add_argument("--resume", action="store_true", help="Resume from previous checkpoint if available")
+    parser.add_argument(
+        "--resume", action="store_true", help="Resume from previous checkpoint if available"
+    )
     parser.add_argument(
         "--max-spend-usd",
         type=float,
@@ -422,14 +430,18 @@ def main(argv: list[str] | None = None) -> int:
             except SpendLimitReached as exc:
                 print(f"\n[!] Spend ceiling reached: {exc}")
                 print(f"[!] Checkpoint saved to {args.checkpoint_file}.")
-                print(f"[!] To resume evaluation, run:")
-                print(f"    python -m evaluation.run_phase12_eval --resume --checkpoint-file {args.checkpoint_file}")
+                print("[!] To resume evaluation, run:")
+                print(
+                    f"    python -m evaluation.run_phase12_eval --resume --checkpoint-file {args.checkpoint_file}"
+                )
                 return 0
             except QuotaExhaustedError as exc:
                 print(f"\n[!] Gemini API quota/credits depleted (429 RESOURCE_EXHAUSTED): {exc}")
                 print(f"[!] Checkpoint saved to {args.checkpoint_file}.")
-                print(f"[!] To resume evaluation after adding credits/quota, run:")
-                print(f"    python -m evaluation.run_phase12_eval --resume --checkpoint-file {args.checkpoint_file}")
+                print("[!] To resume evaluation after adding credits/quota, run:")
+                print(
+                    f"    python -m evaluation.run_phase12_eval --resume --checkpoint-file {args.checkpoint_file}"
+                )
                 return 2
 
     tracker.data["finished"] = True

@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 from fastapi.openapi.utils import get_openapi
-import pytest
 
 from knowledgeforge.main import app
 

@@ -408,5 +408,46 @@ To support programmatic clients and external integrators with stability guarante
   - **Human Sign-Off Policy (Process Fix D)**: Human sign-off is mandatory before any item transitioning to `Done` can be relied upon for release or external claim. Human sign-off is also mandatory for any `Verified` claim that touches external financial spend, production cloud resources, live webhooks, or legal/compliance obligations.
   - Tooling verification gate enforced mechanically by `python scripts/verify_decisions.py` and `scripts/generate_task_summary.py`.
 
+## 2026-09-09 — Phase 7 Wave 1 Architecture Decisions: Natural Filters, Multi-Doc Comparison, Source Highlighting
+
+1. **Natural-Language Filters Over Extracted Fields (Item A)**:
+   - **Bounded Filter Space**: Natural queries are strictly parsed and bounded into the allowlisted JSONB fields (`EXTRACTION_FIELD_FILTERS`), numeric range fields (`EXTRACTION_NUMERIC_RANGE_FIELDS`), and date range fields (`EXTRACTION_DATE_RANGE_FIELDS`).
+   - **Zero Unparameterized SQL**: All dynamic filter clauses use parameterized placeholders with safe type conversions (`NULLIF(REPLACE(e.fields->>%s, ',', ''), '')::numeric`), inheriting existing JSONB path injection protections.
+   - **Ambiguity Fallback**: When queries lack constrained extraction targets, the parser returns a clarifying question rather than guessing or silently dropping constraints.
+   - **Verified via Unit & Golden-Set Tests**: `python -m pytest tests/unit/test_natural_filter.py -v`.
+
+2. **Multi-Document Comparison (Item B)**:
+   - **Strict Multi-Tenant Document Intersection**: When callers provide `document_ids: list[UUID]` in `AskRequest`, the pre-step intersects target IDs against caller tenant-owned documents in `retrieve_chunks` (`d.tenant_id = %s AND c.document_id = ANY(%s)`). Documents belonging to other tenants are silently excluded without error or information disclosure.
+   - **Comparison Framing**: When multiple document IDs or multi-document chunks are retrieved, `build_prompt` injects explicit comparative instructions directing the model to contrast distinct terms and attribute citations individually per document.
+   - **Verified via Unit Tests**: `python -m pytest tests/unit/test_multi_doc_comparison.py -v`.
+
+3. **Source Highlighting Viewer (Item C)**:
+   - **Additive Chunk Character Offsets**: Schema migration `migrations/032_chunk_character_offsets.sql` introduces nullable `start_char` and `end_char` columns on `chunks` to enable exact passage mark styling across plain text and markdown documents.
+   - **Spatial Bounding-Box Overlay**: Integrates normalized sub-page coordinates with SVG rectangle overlays for PDF viewer rendering.
+   - **Tenant-Gated Viewer Endpoints**: `GET /documents/{id}/content` and `GET /documents/{id}/view` enforce strict tenant isolation, returning 404 for non-existent or foreign tenant documents.
+   - **Verified via Unit Tests**: `python -m pytest tests/unit/test_source_highlighting_viewer.py -v`.
+
+## 2026-09-09 — Privacy Vault Key Management, Salt-Per-Record Derivation, and Manual Key-Rotation Procedure (Fix 1)
+
+- **Dedicated Master Key**: Introduced `VAULT_MASTER_KEY` setting decoupled from `JWT_SECRET_KEY`. Enforced by `validate_runtime()` at boot: non-development startup refuses to boot if unset or shorter than 32 characters.
+- **HKDF with Per-Record Salt**: Replaced deterministic SHA256 key derivation with HKDF-SHA256 using a fresh, cryptographically secure 16-byte random salt generated on each encryption operation (`os.urandom(16)`). Salt is prepended to ciphertext (`{base64_salt}:{fernet_token}`), preventing rainbow table / cross-tenant derivation attacks even if master secret is leaked.
+- **Fail-Closed Obfuscation Ban**: Completely removed silent base64 fallback. If `cryptography` package is missing, vault raises `RuntimeError`. Any legacy base64-obfuscated records raise `RuntimeError` immediately upon decryption attempt.
+- **Manual Key Rotation Procedure (Incident Response)**:
+  1. **Preparation**: Identify target scope (global master key rotation or single-tenant emergency re-keying). Ensure maintenance mode or DB replication snapshot if rotating live data.
+  2. **Scripted Re-Encryption (Dual-Key Phase)**:
+     - Run the offline migration tool `python scripts/rotate_vault_keys.py --old-master-key "$OLD_KEY" --new-master-key "$NEW_KEY" --tenant-id "$OPTIONAL_TENANT_ID"` (or custom administrative script).
+     - For each record in `privacy_vault`:
+       a. Decrypt `encrypted_value` using the old key/salt.
+       b. Generate a fresh 16-byte salt and derive a new Fernet key via HKDF with the new master key.
+       c. Encrypt the plaintext using the new key, formatting as `{new_salt_b64}:{new_fernet_token}`.
+       d. Update `privacy_vault.encrypted_value` transactionally.
+  3. **Environment Secret Update**:
+     - Update `VAULT_MASTER_KEY` in Google Secret Manager / production environment variables.
+     - Deploy or restart application workers to load the new `VAULT_MASTER_KEY`.
+  4. **Post-Rotation Verification**:
+     - Execute test unmask against canary surrogate tokens under the rotated tenant(s) to verify successful decryption.
+     - Revoke and decommission the old master secret from Secret Manager.
+
+
 
 

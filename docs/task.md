@@ -69,3 +69,37 @@ Status Taxonomy:
 - [Verified] Decisions citations verified mechanically without phantom files by `scripts/verify_decisions.py`
 - [Verified] OpenAPI specification synchronized and verified with zero drift (`docs/openapi.json`)
 - [Verified] Complete test suite passing with test coverage exceeding the 58.00% floor
+
+## Item 11 — Natural-Language Filters Over Extracted Fields (Phase 7 Wave 1 Item A)
+- [Implemented] Query parser in `src/knowledgeforge/extraction/query_parser.py` converting natural-language queries into structured filters with equality, numeric ranges, and date ranges
+- [Implemented] Ambiguity detection and fallback mechanism returning parsed filter with `ambiguous=True` and explanatory details when queries cannot be confidently mapped
+- [Implemented] Parameterized SQL querying in `src/knowledgeforge/extraction/store.py` supporting numeric and date range filters with safe typecasting and strict tenant isolation
+- [Implemented] API endpoints `POST /extractions/filter` and `GET /extractions?natural_query=...` in `src/knowledgeforge/api.py`
+- [Verified] Unit test suite `tests/unit/test_natural_filter.py` covering operators, SQL safety, API routes, and 100% precision on `evaluation/extraction-golden-set.json` queries
+
+## Item 12 — Multi-Document Comparison (Phase 7 Wave 1 Item B)
+- [Implemented] Multi-document specification via `document_ids: list[UUID] | None` on `AskRequest` in `src/knowledgeforge/api.py`
+- [Implemented] Multi-document retrieval intersection with caller tenant boundary check silently excluding foreign tenant document IDs
+- [Implemented] Dynamic chunk retrieval scaling and comparative prompt instructions in `src/knowledgeforge/generation/prompt.py` when multiple document contexts are loaded
+- [Verified] Unit test suite `tests/unit/test_multi_doc_comparison.py` testing comparison instructions, multi-doc citations, tenant boundary filtering, and empty list short-circuits
+
+## Item 13 — Source Highlighting Viewer (Phase 7 Wave 1 Item C)
+- [Implemented] Database migration `migrations/032_chunk_character_offsets.sql` adding `start_char` and `end_char` tracking columns to `chunks`
+- [Implemented] Exact token-to-character span offset calculation in `src/knowledgeforge/ingestion/chunk.py` (`chunk_pages`)
+- [Implemented] Chunk storage and retrieval with character offsets in `src/knowledgeforge/ingestion/store.py`
+- [Implemented] Endpoints `GET /documents/{document_id}/content` (JSON) and `GET /documents/{document_id}/view` (interactive HTML viewer with SVG/CSS bounding box overlay and passage mark styling)
+- [Verified] Unit test suite `tests/unit/test_source_highlighting_viewer.py` testing character offset accuracy across single/multi-page texts, API content responses, and viewer highlighting
+
+## Item 14 — Round 6 Security Findings & Architectural Hardening
+- [Implemented] Fix 0: Authorization gate `require_owner` on `/privacy/unmask` and `/privacy/vault`; immutable audit logging table `audit_logs` (`migrations/033_audit_logs.sql`) recording caller `user_id`, `tenant_id`, timestamp, and unmasked surrogate tokens.
+- [Implemented] Fix 1: Independent `VAULT_MASTER_KEY` setting with fail-closed boot check in `validate_runtime()`; HKDF-SHA256 key derivation with per-record random 16-byte salt; base64 obfuscation fallback completely removed (fail-closed); documented manual key rotation procedure in `docs/decisions.md`.
+- [Implemented] Fix 2: Research jobs budget system integration: wired `token_budget.reserve()`/`reconcile()` and rate limiting to `POST /research/jobs` scaling proportionally with `max_iterations`; explicit prerequisite gate recorded: NO LLM generator may be wired into `DeepResearchPlanner` until budget integration is verified under a real or realistically simulated multi-turn research job.
+- [Implemented] Fix 3: Gated all four tenant admin routes (`GET /admin/conflicts`, `POST /admin/conflicts/{id}/resolve`, `GET /admin/schemas`, `POST /admin/schemas`, `POST /admin/schemas/infer`) to `Depends(require_owner)`; rate limited `/admin/schemas/infer`; added repo-wide mechanical check verifying zero `/admin` routes use bare `get_current_user`.
+- [Implemented] Fix 4: Added tenant scoping directly to `diff_documents_from_db` SQL query in `diff_engine.py` (`JOIN documents d ON c.document_id = d.id WHERE d.tenant_id = %s`), ensuring safety by construction.
+- [Implemented] Fix 5: Added strict `Content-Security-Policy` headers (`default-src 'self'; script-src 'self' 'nonce-{nonce}'; frame-ancestors 'none'`) to `document_viewer` and `/admin` console; eliminated inline event handlers (`onclick`, `onchange`) in `admin_ui.py` in favor of DOM `addEventListener`.
+- [Implemented] Fix 6: Added `scopes` column (`migrations/034_api_key_scopes.sql`) and `require_scope` dependency check to enforce fine-grained API key permissions across endpoints (`read:documents`, `write:documents`, `query:ask`, `admin:schemas`).
+- [Implemented] Fix 7: Added Cloud Run job `google_cloud_run_v2_job.purge` and Cloud Scheduler resource `google_cloud_scheduler_job.purge_unverified` (daily at 3 AM UTC) in `infrastructure/terraform/main.tf` to trigger `purge_job.py`.
+- [Implemented] Process Fix: Added strategic projection disclaimer header to `REVIEW_AND_ROADMAP.md`, hedged qualitative claims, and extended `scripts/verify_decisions.py` to mechanically scan committed markdown documents for unhedged absolute claims.
+- [Verified] Unit test suites `tests/unit/test_privacy_vault.py`, `tests/unit/test_config.py`, `tests/unit/test_research_jobs_budget.py`, `tests/unit/test_admin_routes_auth.py`, `tests/unit/test_diff_engine_scoping.py`, `tests/unit/test_csp_headers.py`, `tests/unit/test_api_key_scopes.py`, and `tests/unit/test_decisions_integrity.py` passing with 100% success.
+
+

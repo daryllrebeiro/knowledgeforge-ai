@@ -1,14 +1,14 @@
 """Unit tests for resumable, cost-aware Phase 12 evaluation runner."""
 
-from io import StringIO
 import json
-from pathlib import Path
 import sys
+from io import StringIO
+from pathlib import Path
+
 import pytest
 
 from evaluation.run_phase12_eval import (
     CheckpointTracker,
-    QuotaExhaustedError,
     SpendLimitReached,
     is_quota_exhausted_error,
     main,
@@ -93,13 +93,18 @@ def test_eval_local_with_checkpoint_and_resume(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(sys, "stdout", captured)
 
     # Run eval with --resume for only baseline-500-100
-    code = main([
-        "--local",
-        "--profiles", "baseline-500-100",
-        "--checkpoint-file", str(ckpt_file),
-        "--output", str(output_file),
-        "--resume",
-    ])
+    code = main(
+        [
+            "--local",
+            "--profiles",
+            "baseline-500-100",
+            "--checkpoint-file",
+            str(ckpt_file),
+            "--output",
+            str(output_file),
+            "--resume",
+        ]
+    )
     assert code == 0
     stdout = captured.getvalue()
     assert "Resuming: reusing completed profile 'baseline-500-100-vector'" in stdout

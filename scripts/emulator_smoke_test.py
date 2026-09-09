@@ -143,9 +143,7 @@ def extraction_lifecycle(token: str) -> str:
 
     # Outbox dispatcher -> extraction worker -> document_extractions row.
     for _ in range(45):
-        code, body = request_status(
-            f"/documents/{document_id}/extraction", headers=headers
-        )
+        code, body = request_status(f"/documents/{document_id}/extraction", headers=headers)
         if code == 200:
             extraction = json.loads(body)
             break
@@ -195,9 +193,7 @@ def extraction_lifecycle(token: str) -> str:
     if not answer["answer"] or not answer["citations"]:
         raise SystemExit(f"structured ask returned no cited answer: {answer}")
     if not any(citation.get("page") is None for citation in answer["citations"]):
-        raise SystemExit(
-            f"structured ask did not cite extracted fields: {answer['citations']}"
-        )
+        raise SystemExit(f"structured ask did not cite extracted fields: {answer['citations']}")
     return document_id
 
 

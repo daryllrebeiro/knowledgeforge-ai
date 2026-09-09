@@ -1,10 +1,10 @@
 """Run a PostgreSQL backup/restore integrity and disaster recovery verification check."""
 
-from dataclasses import dataclass
 import os
-from pathlib import Path
 import subprocess
 import time
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -46,7 +46,7 @@ def check_integrity(connection: psycopg.Connection) -> DatabaseIntegrityReport:
         if chunks > 0:
             cursor.execute("SELECT count(*) FROM chunks WHERE embedding IS NOT NULL")
             non_null_embeddings = int(cursor.fetchone()[0])
-            embeddings_valid = (non_null_embeddings == chunks)
+            embeddings_valid = non_null_embeddings == chunks
 
         cursor.execute("SELECT count(*) FROM document_extractions")
         extractions = int(cursor.fetchone()[0])
@@ -106,9 +106,14 @@ def main() -> None:
     # If RESTORE_DATABASE_URL is provided, perform dump, restore, and parity verification
     if target:
         print(f"Dumping source database to {backup_file}...")
-        subprocess.run(["pg_dump", "--format=custom", "--file", str(backup_file), source], check=True)
-        print(f"Restoring backup to target database...")
-        subprocess.run(["pg_restore", "--clean", "--if-exists", "--dbname", target, str(backup_file)], check=True)
+        subprocess.run(
+            ["pg_dump", "--format=custom", "--file", str(backup_file), source], check=True
+        )
+        print("Restoring backup to target database...")
+        subprocess.run(
+            ["pg_restore", "--clean", "--if-exists", "--dbname", target, str(backup_file)],
+            check=True,
+        )
 
         if not verify_restore(source, target):
             raise SystemExit(1)

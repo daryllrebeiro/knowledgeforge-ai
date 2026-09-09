@@ -37,7 +37,10 @@ def main() -> int:
 
     if args.check:
         if not OPENAPI_PATH.exists():
-            print(f"ERROR: {OPENAPI_PATH} does not exist. Run without --check to generate it.", file=sys.stderr)
+            print(
+                f"ERROR: {OPENAPI_PATH} does not exist. Run without --check to generate it.",
+                file=sys.stderr,
+            )
             return 1
         committed_content = OPENAPI_PATH.read_text(encoding="utf-8")
         if committed_content != serialized:

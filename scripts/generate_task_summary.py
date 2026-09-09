@@ -11,11 +11,11 @@ Usage:
 """
 
 import argparse
-from collections import Counter
 import json
-from pathlib import Path
 import re
 import sys
+from collections import Counter
+from pathlib import Path
 
 TASK_FILE = Path("docs/task.md")
 
@@ -61,10 +61,12 @@ def parse_tasks(file_path: Path = TASK_FILE) -> dict:
             # Demote unsigned [Done] to Verified per Ground Rule 5
             if status == "Done" and not SIGNED_OFF_RE.search(description):
                 status = "Verified"
-            sections[current_section].append({
-                "status": status,
-                "description": description,
-            })
+            sections[current_section].append(
+                {
+                    "status": status,
+                    "description": description,
+                }
+            )
 
     return sections
 
@@ -93,12 +95,14 @@ def generate_summary(sections: dict) -> dict:
         else:
             overall = "In Progress"
 
-        section_summaries.append({
-            "section": sec_title,
-            "item_count": len(items),
-            "status_breakdown": dict(counts),
-            "overall_status": overall,
-        })
+        section_summaries.append(
+            {
+                "section": sec_title,
+                "item_count": len(items),
+                "status_breakdown": dict(counts),
+                "overall_status": overall,
+            }
+        )
 
     return {
         "total_sections": len(sections),
@@ -121,7 +125,11 @@ def main() -> int:
         return 0
 
     content = TASK_FILE.read_text(encoding="utf-8") if TASK_FILE.exists() else ""
-    first_line = content.splitlines()[0].lstrip("# ").replace("—", "--").strip() if content else "Phase 5 Engineering Status Summary"
+    first_line = (
+        content.splitlines()[0].lstrip("# ").replace("—", "--").strip()
+        if content
+        else "Phase 5 Engineering Status Summary"
+    )
 
     print("=" * 70)
     print(first_line)

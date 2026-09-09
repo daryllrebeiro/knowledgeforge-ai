@@ -170,6 +170,13 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
           }
         },
         "required": [
@@ -196,6 +203,13 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
           }
         },
         "required": [
@@ -240,6 +254,13 @@
           "revoked": {
             "title": "Revoked",
             "type": "boolean"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
           }
         },
         "required": [
@@ -315,6 +336,21 @@
             ],
             "title": "Document Id"
           },
+          "document_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Ids"
+          },
           "filename": {
             "anyOf": [
               {
@@ -374,6 +410,39 @@
               }
             ],
             "title": "Conversation Id"
+          },
+          "grounding_score": {
+            "default": 1.0,
+            "title": "Grounding Score",
+            "type": "number"
+          },
+          "is_grounded": {
+            "default": true,
+            "title": "Is Grounded",
+            "type": "boolean"
+          },
+          "sql_executed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sql Executed"
+          },
+          "table_results": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Results"
           }
         },
         "required": [
@@ -589,12 +658,51 @@
         "title": "ChunkPreviewResponse",
         "type": "object"
       },
+      "CitationHighlight": {
+        "properties": {
+          "box": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Box",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "text_snippet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Snippet"
+          }
+        },
+        "required": [
+          "page",
+          "box"
+        ],
+        "title": "CitationHighlight",
+        "type": "object"
+      },
       "CitationResponse": {
         "properties": {
           "document_id": {
             "format": "uuid",
             "title": "Document Id",
             "type": "string"
+          },
+          "highlights": {
+            "items": {
+              "$ref": "#/components/schemas/CitationHighlight"
+            },
+            "title": "Highlights",
+            "type": "array"
           },
           "page": {
             "anyOf": [
@@ -612,6 +720,125 @@
           "document_id"
         ],
         "title": "CitationResponse",
+        "type": "object"
+      },
+      "ClauseDiffResponse": {
+        "properties": {
+          "change_type": {
+            "title": "Change Type",
+            "type": "string"
+          },
+          "delta_summary": {
+            "title": "Delta Summary",
+            "type": "string"
+          },
+          "risk_severity": {
+            "title": "Risk Severity",
+            "type": "string"
+          },
+          "section_name": {
+            "title": "Section Name",
+            "type": "string"
+          },
+          "similarity": {
+            "title": "Similarity",
+            "type": "number"
+          },
+          "source_clause": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Clause"
+          },
+          "target_clause": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Clause"
+          }
+        },
+        "required": [
+          "section_name",
+          "change_type",
+          "risk_severity",
+          "source_clause",
+          "target_clause",
+          "similarity",
+          "delta_summary"
+        ],
+        "title": "ClauseDiffResponse",
+        "type": "object"
+      },
+      "ConflictResolveRequest": {
+        "properties": {
+          "status": {
+            "default": "resolved",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "ConflictResolveRequest",
+        "type": "object"
+      },
+      "ConflictResponse": {
+        "properties": {
+          "conflict_category": {
+            "title": "Conflict Category",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "doc_a_id": {
+            "format": "uuid",
+            "title": "Doc A Id",
+            "type": "string"
+          },
+          "doc_b_id": {
+            "format": "uuid",
+            "title": "Doc B Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "doc_a_id",
+          "doc_b_id",
+          "conflict_category",
+          "description",
+          "severity",
+          "status",
+          "created_at"
+        ],
+        "title": "ConflictResponse",
         "type": "object"
       },
       "ConversationCreateRequest": {
@@ -773,6 +1000,122 @@
         "title": "CustomerPortalResponse",
         "type": "object"
       },
+      "DocumentChunkItem": {
+        "properties": {
+          "bounding_boxes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Bounding Boxes",
+            "type": "array"
+          },
+          "chunk_id": {
+            "format": "uuid",
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "end_char": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Char"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section"
+          },
+          "start_char": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Char"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chunk_id",
+          "page",
+          "text"
+        ],
+        "title": "DocumentChunkItem",
+        "type": "object"
+      },
+      "DocumentContentResponse": {
+        "properties": {
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentChunkItem"
+            },
+            "title": "Chunks",
+            "type": "array"
+          },
+          "doc_type": {
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentPageContent"
+            },
+            "title": "Pages",
+            "type": "array"
+          },
+          "storage_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storage Uri"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "title",
+          "doc_type",
+          "pages",
+          "chunks"
+        ],
+        "title": "DocumentContentResponse",
+        "type": "object"
+      },
       "DocumentDetailResponse": {
         "properties": {
           "chunk_count": {
@@ -829,6 +1172,79 @@
         "title": "DocumentDetailResponse",
         "type": "object"
       },
+      "DocumentDiffRequest": {
+        "properties": {
+          "source_doc_id": {
+            "format": "uuid",
+            "title": "Source Doc Id",
+            "type": "string"
+          },
+          "target_doc_id": {
+            "format": "uuid",
+            "title": "Target Doc Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_doc_id",
+          "target_doc_id"
+        ],
+        "title": "DocumentDiffRequest",
+        "type": "object"
+      },
+      "DocumentDiffResponse": {
+        "properties": {
+          "added_count": {
+            "title": "Added Count",
+            "type": "integer"
+          },
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/ClauseDiffResponse"
+            },
+            "title": "Clauses",
+            "type": "array"
+          },
+          "executive_summary": {
+            "title": "Executive Summary",
+            "type": "string"
+          },
+          "modified_count": {
+            "title": "Modified Count",
+            "type": "integer"
+          },
+          "overall_risk_score": {
+            "title": "Overall Risk Score",
+            "type": "string"
+          },
+          "removed_count": {
+            "title": "Removed Count",
+            "type": "integer"
+          },
+          "source_doc_id": {
+            "format": "uuid",
+            "title": "Source Doc Id",
+            "type": "string"
+          },
+          "target_doc_id": {
+            "format": "uuid",
+            "title": "Target Doc Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_doc_id",
+          "target_doc_id",
+          "overall_risk_score",
+          "added_count",
+          "removed_count",
+          "modified_count",
+          "clauses",
+          "executive_summary"
+        ],
+        "title": "DocumentDiffResponse",
+        "type": "object"
+      },
       "DocumentListResponse": {
         "properties": {
           "documents": {
@@ -853,6 +1269,24 @@
           "offset"
         ],
         "title": "DocumentListResponse",
+        "type": "object"
+      },
+      "DocumentPageContent": {
+        "properties": {
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page",
+          "text"
+        ],
+        "title": "DocumentPageContent",
         "type": "object"
       },
       "DocumentSummary": {
@@ -918,6 +1352,94 @@
           "document_id"
         ],
         "title": "DocumentUploadResponse",
+        "type": "object"
+      },
+      "DynamicSchemaCreateRequest": {
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Description",
+            "type": "string"
+          },
+          "field_descriptions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Field Descriptions",
+            "type": "object"
+          },
+          "json_schema": {
+            "additionalProperties": true,
+            "title": "Json Schema",
+            "type": "object"
+          },
+          "schema_name": {
+            "maxLength": 100,
+            "minLength": 2,
+            "title": "Schema Name",
+            "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "schema_name",
+          "json_schema"
+        ],
+        "title": "DynamicSchemaCreateRequest",
+        "type": "object"
+      },
+      "DynamicSchemaResponse": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "field_descriptions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Field Descriptions",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "json_schema": {
+            "additionalProperties": true,
+            "title": "Json Schema",
+            "type": "object"
+          },
+          "schema_name": {
+            "title": "Schema Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "schema_name",
+          "schema_version",
+          "description",
+          "json_schema",
+          "field_descriptions",
+          "created_at"
+        ],
+        "title": "DynamicSchemaResponse",
         "type": "object"
       },
       "ExtractionCorrectionRequest": {
@@ -1138,6 +1660,82 @@
         "title": "FailedIngestionResponse",
         "type": "object"
       },
+      "GraphPathResponse": {
+        "properties": {
+          "depth": {
+            "title": "Depth",
+            "type": "integer"
+          },
+          "relation_type": {
+            "title": "Relation Type",
+            "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "target_name": {
+            "title": "Target Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_name",
+          "relation_type",
+          "target_name",
+          "depth"
+        ],
+        "title": "GraphPathResponse",
+        "type": "object"
+      },
+      "GraphQueryRequest": {
+        "properties": {
+          "limit": {
+            "default": 25,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "max_depth": {
+            "default": 2,
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "Max Depth",
+            "type": "integer"
+          },
+          "seed_entities": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Seed Entities",
+            "type": "array"
+          }
+        },
+        "required": [
+          "seed_entities"
+        ],
+        "title": "GraphQueryRequest",
+        "type": "object"
+      },
+      "GraphQueryResponse": {
+        "properties": {
+          "paths": {
+            "items": {
+              "$ref": "#/components/schemas/GraphPathResponse"
+            },
+            "title": "Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "paths"
+        ],
+        "title": "GraphQueryResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1149,6 +1747,44 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "InferSchemaRequest": {
+        "properties": {
+          "sample_text": {
+            "minLength": 10,
+            "title": "Sample Text",
+            "type": "string"
+          },
+          "schema_name": {
+            "default": "inferred_schema",
+            "title": "Schema Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sample_text"
+        ],
+        "title": "InferSchemaRequest",
+        "type": "object"
+      },
+      "InferSchemaResponse": {
+        "properties": {
+          "json_schema": {
+            "additionalProperties": true,
+            "title": "Json Schema",
+            "type": "object"
+          },
+          "schema_name": {
+            "title": "Schema Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_name",
+          "json_schema"
+        ],
+        "title": "InferSchemaResponse",
         "type": "object"
       },
       "InvitationAcceptRequest": {
@@ -1261,6 +1897,52 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "MaskTextRequest": {
+        "properties": {
+          "store_in_vault": {
+            "default": true,
+            "title": "Store In Vault",
+            "type": "boolean"
+          },
+          "text": {
+            "maxLength": 50000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "MaskTextRequest",
+        "type": "object"
+      },
+      "MaskTextResponse": {
+        "properties": {
+          "entity_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entity Types",
+            "type": "array"
+          },
+          "masked_text": {
+            "title": "Masked Text",
+            "type": "string"
+          },
+          "tokens_count": {
+            "title": "Tokens Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "masked_text",
+          "tokens_count",
+          "entity_types"
+        ],
+        "title": "MaskTextResponse",
+        "type": "object"
+      },
       "MemberListResponse": {
         "properties": {
           "members": {
@@ -1349,6 +2031,76 @@
           "created_at"
         ],
         "title": "MessageResponse",
+        "type": "object"
+      },
+      "NaturalFilterRequest": {
+        "properties": {
+          "limit": {
+            "default": 50,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "query": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "NaturalFilterRequest",
+        "type": "object"
+      },
+      "NaturalFilterResponse": {
+        "properties": {
+          "applied_filters": {
+            "additionalProperties": true,
+            "title": "Applied Filters",
+            "type": "object"
+          },
+          "clarification_needed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clarification Needed"
+          },
+          "extractions": {
+            "items": {
+              "$ref": "#/components/schemas/ExtractionResponse"
+            },
+            "title": "Extractions",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "extractions",
+          "limit",
+          "offset"
+        ],
+        "title": "NaturalFilterResponse",
         "type": "object"
       },
       "RefreshRequest": {
@@ -1447,6 +2199,180 @@
           "document_id"
         ],
         "title": "ReprocessResponse",
+        "type": "object"
+      },
+      "ResearchJobCreateRequest": {
+        "properties": {
+          "brief": {
+            "maxLength": 2000,
+            "minLength": 5,
+            "title": "Brief",
+            "type": "string"
+          },
+          "max_iterations": {
+            "default": 3,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Iterations",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "brief"
+        ],
+        "title": "ResearchJobCreateRequest",
+        "type": "object"
+      },
+      "ResearchJobListItem": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "query",
+          "status"
+        ],
+        "title": "ResearchJobListItem",
+        "type": "object"
+      },
+      "ResearchJobResponse": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "completeness_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completeness Score"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "final_report": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Report"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "plan": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Plan",
+            "type": "array"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "sources": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "query",
+          "status"
+        ],
+        "title": "ResearchJobResponse",
         "type": "object"
       },
       "ResendVerificationRequest": {
@@ -2021,6 +2947,32 @@
         "title": "TokenResponse",
         "type": "object"
       },
+      "UnmaskTextRequest": {
+        "properties": {
+          "masked_text": {
+            "title": "Masked Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "masked_text"
+        ],
+        "title": "UnmaskTextRequest",
+        "type": "object"
+      },
+      "UnmaskTextResponse": {
+        "properties": {
+          "unmasked_text": {
+            "title": "Unmasked Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unmasked_text"
+        ],
+        "title": "UnmaskTextResponse",
+        "type": "object"
+      },
       "UpdateSSOConfigRequest": {
         "properties": {
           "client_id": {
@@ -2216,6 +3168,41 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VaultEntryResponse": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "surrogate_token": {
+            "title": "Surrogate Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "surrogate_token",
+          "entity_type",
+          "created_at"
+        ],
+        "title": "VaultEntryResponse",
         "type": "object"
       },
       "VerifyEmailRequest": {
@@ -2476,6 +3463,160 @@
           }
         ],
         "summary": "Admin Update Tenant Tier"
+      }
+    },
+    "/admin/conflicts": {
+      "get": {
+        "description": "List detected cross-document knowledge conflicts and policy contradictions (Feature 8).",
+        "operationId": "get_conflicts_admin_conflicts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "default": "unresolved",
+              "title": "Status Filter",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConflictResponse"
+                  },
+                  "title": "Response Get Conflicts Admin Conflicts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Conflicts"
+      }
+    },
+    "/admin/conflicts/{conflict_id}/resolve": {
+      "post": {
+        "description": "Resolve or dismiss a detected knowledge conflict (Feature 8).",
+        "operationId": "resolve_conflict_endpoint_admin_conflicts__conflict_id__resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conflict_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conflict Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConflictResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Resolve Conflict Endpoint Admin Conflicts  Conflict Id  Resolve Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resolve Conflict Endpoint"
       }
     },
     "/admin/dlq": {
@@ -2772,6 +3913,261 @@
           }
         ],
         "summary": "Admin Failed Ingestions"
+      }
+    },
+    "/admin/schemas": {
+      "get": {
+        "description": "List all active extraction schemas configured for the tenant (Feature 3).",
+        "operationId": "list_schemas_admin_schemas_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DynamicSchemaResponse"
+                  },
+                  "title": "Response List Schemas Admin Schemas Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Schemas"
+      },
+      "post": {
+        "description": "Create or update a dynamic structured extraction schema for the tenant (Feature 3).",
+        "operationId": "create_schema_admin_schemas_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DynamicSchemaCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DynamicSchemaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Schema"
+      }
+    },
+    "/admin/schemas/infer": {
+      "post": {
+        "description": "Infer a candidate extraction schema from sample document text (Feature 3).",
+        "operationId": "infer_schema_admin_schemas_infer_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InferSchemaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferSchemaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Infer Schema"
+      }
+    },
+    "/admin/schemas/{schema_name}": {
+      "get": {
+        "description": "Get detail for a specific extraction schema (Feature 3).",
+        "operationId": "get_schema_admin_schemas__schema_name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schema_name",
+            "required": true,
+            "schema": {
+              "title": "Schema Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DynamicSchemaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Schema"
       }
     },
     "/admin/tenants": {
@@ -4277,6 +5673,68 @@
         "summary": "Upload Documents Batch"
       }
     },
+    "/documents/diff": {
+      "post": {
+        "description": "Perform semantic clause alignment, redline delta analysis, and risk scoring between two documents (Feature 7).",
+        "operationId": "diff_documents_documents_diff_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentDiffRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentDiffResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Diff Documents"
+      }
+    },
     "/documents/{document_id}": {
       "delete": {
         "operationId": "remove_document_documents__document_id__delete",
@@ -4473,6 +5931,68 @@
           }
         ],
         "summary": "Document Chunks"
+      }
+    },
+    "/documents/{document_id}/content": {
+      "get": {
+        "description": "Retrieve structured content, page texts, chunks, offsets, and bounding boxes for document viewer.",
+        "operationId": "document_content_documents__document_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentContentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Document Content"
       }
     },
     "/documents/{document_id}/extraction": {
@@ -4681,6 +6201,81 @@
         "summary": "Reprocess Extraction"
       }
     },
+    "/documents/{document_id}/pages/{page_number}/highlights": {
+      "get": {
+        "description": "Return all bounding-box highlight geometries for a given document page.",
+        "operationId": "get_page_highlights_documents__document_id__pages__page_number__highlights_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "page_number",
+            "required": true,
+            "schema": {
+              "title": "Page Number",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CitationHighlight"
+                  },
+                  "title": "Response Get Page Highlights Documents  Document Id  Pages  Page Number  Highlights Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Page Highlights"
+      }
+    },
     "/documents/{document_id}/reingest": {
       "post": {
         "description": "Re-process a finished document from its stored original (F3).\n\nRe-chunking and re-embedding with the current settings \u2014 without uploading\nthe file again. The embedding cache means unchanged chunk text is not\nre-embedded. Only meaningful with async ingestion; sync mode has no stored\noriginal to re-process.",
@@ -4741,6 +6336,113 @@
           }
         ],
         "summary": "Reingest Document"
+      }
+    },
+    "/documents/{document_id}/view": {
+      "get": {
+        "description": "Interactive document viewer with bounding box overlays and text passage highlighting.",
+        "operationId": "document_viewer_documents__document_id__view_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "chunk_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chunk Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "highlight",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Highlight"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Document Viewer"
       }
     },
     "/extraction-jobs/{job_id}": {
@@ -4914,6 +6616,23 @@
           },
           {
             "in": "query",
+            "name": "natural_query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Natural Query"
+            }
+          },
+          {
+            "in": "query",
             "name": "needs_review",
             "required": false,
             "schema": {
@@ -4996,6 +6715,130 @@
           }
         ],
         "summary": "Extractions"
+      }
+    },
+    "/extractions/filter": {
+      "post": {
+        "description": "Filter extractions using a natural-language query translated to allowlisted field constraints.",
+        "operationId": "filter_extractions_natural_extractions_filter_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NaturalFilterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NaturalFilterResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Filter Extractions Natural"
+      }
+    },
+    "/graph/query": {
+      "post": {
+        "description": "Traverse multi-hop relationships starting from seed entities (Feature 6: GraphRAG).",
+        "operationId": "query_graph_graph_query_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphQueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Query Graph"
       }
     },
     "/health": {
@@ -5401,6 +7244,388 @@
           }
         ],
         "summary": "Update Member Role"
+      }
+    },
+    "/privacy/mask": {
+      "post": {
+        "description": "Detect and replace PII/PHI with deterministic surrogate tokens (Feature 10: Privacy Vault).",
+        "operationId": "mask_text_endpoint_privacy_mask_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaskTextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaskTextResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mask Text Endpoint"
+      }
+    },
+    "/privacy/unmask": {
+      "post": {
+        "description": "Re-hydrate surrogate tokens back into original plaintext values (Feature 10: Privacy Vault).",
+        "operationId": "unmask_text_endpoint_privacy_unmask_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnmaskTextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnmaskTextResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unmask Text Endpoint"
+      }
+    },
+    "/privacy/vault": {
+      "get": {
+        "description": "Audit pseudonym tokens and classified sensitive entity types (Feature 10: Privacy Vault).",
+        "operationId": "list_vault_endpoint_privacy_vault_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VaultEntryResponse"
+                  },
+                  "title": "Response List Vault Endpoint Privacy Vault Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Vault Endpoint"
+      }
+    },
+    "/research/jobs": {
+      "get": {
+        "description": "List recent research jobs for current tenant (Feature 9).",
+        "operationId": "list_research_jobs_endpoint_research_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ResearchJobListItem"
+                  },
+                  "title": "Response List Research Jobs Endpoint Research Jobs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Research Jobs Endpoint"
+      },
+      "post": {
+        "description": "Execute autonomous agentic multi-round research across corpus (Feature 9).",
+        "operationId": "create_research_job_endpoint_research_jobs_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchJobCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Research Job Endpoint"
+      }
+    },
+    "/research/jobs/{job_id}": {
+      "get": {
+        "description": "Get research dossier and execution history for a job (Feature 9).",
+        "operationId": "get_research_job_endpoint_research_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Research Job Endpoint"
       }
     },
     "/tenant/dashboard": {
@@ -6102,6 +8327,160 @@
         "summary": "Admin Update Tenant Tier"
       }
     },
+    "/v1/admin/conflicts": {
+      "get": {
+        "description": "List detected cross-document knowledge conflicts and policy contradictions (Feature 8).",
+        "operationId": "get_conflicts_v1_admin_conflicts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "default": "unresolved",
+              "title": "Status Filter",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConflictResponse"
+                  },
+                  "title": "Response Get Conflicts V1 Admin Conflicts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Conflicts"
+      }
+    },
+    "/v1/admin/conflicts/{conflict_id}/resolve": {
+      "post": {
+        "description": "Resolve or dismiss a detected knowledge conflict (Feature 8).",
+        "operationId": "resolve_conflict_endpoint_v1_admin_conflicts__conflict_id__resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conflict_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conflict Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConflictResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Resolve Conflict Endpoint V1 Admin Conflicts  Conflict Id  Resolve Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resolve Conflict Endpoint"
+      }
+    },
     "/v1/admin/dlq": {
       "get": {
         "description": "Inspect dead letters and permanent processing failures (platform admin only).",
@@ -6396,6 +8775,261 @@
           }
         ],
         "summary": "Admin Failed Ingestions"
+      }
+    },
+    "/v1/admin/schemas": {
+      "get": {
+        "description": "List all active extraction schemas configured for the tenant (Feature 3).",
+        "operationId": "list_schemas_v1_admin_schemas_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DynamicSchemaResponse"
+                  },
+                  "title": "Response List Schemas V1 Admin Schemas Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Schemas"
+      },
+      "post": {
+        "description": "Create or update a dynamic structured extraction schema for the tenant (Feature 3).",
+        "operationId": "create_schema_v1_admin_schemas_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DynamicSchemaCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DynamicSchemaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Schema"
+      }
+    },
+    "/v1/admin/schemas/infer": {
+      "post": {
+        "description": "Infer a candidate extraction schema from sample document text (Feature 3).",
+        "operationId": "infer_schema_v1_admin_schemas_infer_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InferSchemaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferSchemaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Infer Schema"
+      }
+    },
+    "/v1/admin/schemas/{schema_name}": {
+      "get": {
+        "description": "Get detail for a specific extraction schema (Feature 3).",
+        "operationId": "get_schema_v1_admin_schemas__schema_name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schema_name",
+            "required": true,
+            "schema": {
+              "title": "Schema Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DynamicSchemaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Schema"
       }
     },
     "/v1/admin/tenants": {
@@ -7901,6 +10535,68 @@
         "summary": "Upload Documents Batch"
       }
     },
+    "/v1/documents/diff": {
+      "post": {
+        "description": "Perform semantic clause alignment, redline delta analysis, and risk scoring between two documents (Feature 7).",
+        "operationId": "diff_documents_v1_documents_diff_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentDiffRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentDiffResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Diff Documents"
+      }
+    },
     "/v1/documents/{document_id}": {
       "delete": {
         "operationId": "remove_document_v1_documents__document_id__delete",
@@ -8097,6 +10793,68 @@
           }
         ],
         "summary": "Document Chunks"
+      }
+    },
+    "/v1/documents/{document_id}/content": {
+      "get": {
+        "description": "Retrieve structured content, page texts, chunks, offsets, and bounding boxes for document viewer.",
+        "operationId": "document_content_v1_documents__document_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentContentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Document Content"
       }
     },
     "/v1/documents/{document_id}/extraction": {
@@ -8305,6 +11063,81 @@
         "summary": "Reprocess Extraction"
       }
     },
+    "/v1/documents/{document_id}/pages/{page_number}/highlights": {
+      "get": {
+        "description": "Return all bounding-box highlight geometries for a given document page.",
+        "operationId": "get_page_highlights_v1_documents__document_id__pages__page_number__highlights_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "page_number",
+            "required": true,
+            "schema": {
+              "title": "Page Number",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CitationHighlight"
+                  },
+                  "title": "Response Get Page Highlights V1 Documents  Document Id  Pages  Page Number  Highlights Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Page Highlights"
+      }
+    },
     "/v1/documents/{document_id}/reingest": {
       "post": {
         "description": "Re-process a finished document from its stored original (F3).\n\nRe-chunking and re-embedding with the current settings \u2014 without uploading\nthe file again. The embedding cache means unchanged chunk text is not\nre-embedded. Only meaningful with async ingestion; sync mode has no stored\noriginal to re-process.",
@@ -8365,6 +11198,113 @@
           }
         ],
         "summary": "Reingest Document"
+      }
+    },
+    "/v1/documents/{document_id}/view": {
+      "get": {
+        "description": "Interactive document viewer with bounding box overlays and text passage highlighting.",
+        "operationId": "document_viewer_v1_documents__document_id__view_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "chunk_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chunk Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "highlight",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Highlight"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Document Viewer"
       }
     },
     "/v1/extraction-jobs/{job_id}": {
@@ -8538,6 +11478,23 @@
           },
           {
             "in": "query",
+            "name": "natural_query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Natural Query"
+            }
+          },
+          {
+            "in": "query",
             "name": "needs_review",
             "required": false,
             "schema": {
@@ -8620,6 +11577,130 @@
           }
         ],
         "summary": "Extractions"
+      }
+    },
+    "/v1/extractions/filter": {
+      "post": {
+        "description": "Filter extractions using a natural-language query translated to allowlisted field constraints.",
+        "operationId": "filter_extractions_natural_v1_extractions_filter_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NaturalFilterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NaturalFilterResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Filter Extractions Natural"
+      }
+    },
+    "/v1/graph/query": {
+      "post": {
+        "description": "Traverse multi-hop relationships starting from seed entities (Feature 6: GraphRAG).",
+        "operationId": "query_graph_v1_graph_query_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphQueryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Query Graph"
       }
     },
     "/v1/ingestions/failed": {
@@ -8999,6 +12080,388 @@
           }
         ],
         "summary": "Update Member Role"
+      }
+    },
+    "/v1/privacy/mask": {
+      "post": {
+        "description": "Detect and replace PII/PHI with deterministic surrogate tokens (Feature 10: Privacy Vault).",
+        "operationId": "mask_text_endpoint_v1_privacy_mask_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaskTextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaskTextResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mask Text Endpoint"
+      }
+    },
+    "/v1/privacy/unmask": {
+      "post": {
+        "description": "Re-hydrate surrogate tokens back into original plaintext values (Feature 10: Privacy Vault).",
+        "operationId": "unmask_text_endpoint_v1_privacy_unmask_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnmaskTextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnmaskTextResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unmask Text Endpoint"
+      }
+    },
+    "/v1/privacy/vault": {
+      "get": {
+        "description": "Audit pseudonym tokens and classified sensitive entity types (Feature 10: Privacy Vault).",
+        "operationId": "list_vault_endpoint_v1_privacy_vault_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VaultEntryResponse"
+                  },
+                  "title": "Response List Vault Endpoint V1 Privacy Vault Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Vault Endpoint"
+      }
+    },
+    "/v1/research/jobs": {
+      "get": {
+        "description": "List recent research jobs for current tenant (Feature 9).",
+        "operationId": "list_research_jobs_endpoint_v1_research_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ResearchJobListItem"
+                  },
+                  "title": "Response List Research Jobs Endpoint V1 Research Jobs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Research Jobs Endpoint"
+      },
+      "post": {
+        "description": "Execute autonomous agentic multi-round research across corpus (Feature 9).",
+        "operationId": "create_research_job_endpoint_v1_research_jobs_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchJobCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Research Job Endpoint"
+      }
+    },
+    "/v1/research/jobs/{job_id}": {
+      "get": {
+        "description": "Get research dossier and execution history for a job (Feature 9).",
+        "operationId": "get_research_job_endpoint_v1_research_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Research Job Endpoint"
       }
     },
     "/v1/tenant/dashboard": {

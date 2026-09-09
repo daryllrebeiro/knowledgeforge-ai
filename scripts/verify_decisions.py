@@ -9,9 +9,9 @@ docs/decisions.md is either:
 Fails with exit code 1 if ungrounded numeric claims are detected.
 """
 
-from pathlib import Path
 import re
 import sys
+from pathlib import Path
 
 DECISIONS_PATH = Path("docs/decisions.md")
 
@@ -73,7 +73,9 @@ def verify_decisions_integrity(path: Path = DECISIONS_PATH) -> list[str]:
             ):
                 cited_path = match.group(1).strip()
                 cited_file = cited_path.split()[0]
-                repo_root = target_path.parent.parent if target_path.parent.name == "docs" else Path(".")
+                repo_root = (
+                    target_path.parent.parent if target_path.parent.name == "docs" else Path(".")
+                )
                 resolved_file = repo_root / cited_file
                 if not resolved_file.exists() and not Path(cited_file).exists():
                     violations.append(
@@ -84,15 +86,62 @@ def verify_decisions_integrity(path: Path = DECISIONS_PATH) -> list[str]:
     return violations
 
 
+QUALITATIVE_ABSOLUTE_PATTERNS = [
+    re.compile(r"\bstructurally\s+impossible\b", re.IGNORECASE),
+    re.compile(r"\bzero\s+risk\b", re.IGNORECASE),
+    re.compile(r"\b100%\s+secure\b", re.IGNORECASE),
+    re.compile(r"\bcompletely\s+bulletproof\b", re.IGNORECASE),
+    re.compile(r"\bimpossible\s+to\s+(?:hack|bypass|leak|exploit)\b", re.IGNORECASE),
+]
+
+
+def verify_qualitative_absolutes(paths: list[Path] | None = None) -> list[str]:
+    """Scan markdown documents for unhedged qualitative absolutes.
+
+    Flags qualitative overconfidence (e.g. 'zero risk', 'structurally impossible')
+    that lacks qualification or evidence.
+    """
+    if paths is None:
+        paths = list(Path("docs").glob("*.md"))
+        roadmap = Path("REVIEW_AND_ROADMAP.md")
+        if roadmap.exists():
+            paths.append(roadmap)
+
+    violations = []
+    for path in paths:
+        if not path.exists():
+            continue
+        content = path.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        for line_num, line in enumerate(lines, 1):
+            stripped = line.strip()
+            # Skip quotations/disclaimers or code blocks
+            if stripped.startswith(">") or stripped.startswith("`") or stripped.startswith("#"):
+                continue
+            for pattern in QUALITATIVE_ABSOLUTE_PATTERNS:
+                match = pattern.search(line)
+                if match:
+                    violations.append(
+                        f"Unhedged qualitative absolute '{match.group(0)}' in {path}:{line_num}: "
+                        f"Prose claims must be hedged defensively and grounded rather than asserting absolute security."
+                    )
+    return violations
+
+
 def main() -> int:
-    violations = verify_decisions_integrity()
-    if violations:
-        print("[-] Process Fix A - docs/decisions.md integrity failure:", file=sys.stderr)
-        for v in violations:
+    numeric_violations = verify_decisions_integrity()
+    qualitative_violations = verify_qualitative_absolutes()
+    all_violations = numeric_violations + qualitative_violations
+
+    if all_violations:
+        print("[-] Process Integrity Check Failure:", file=sys.stderr)
+        for v in all_violations:
             print(f"    - {v}", file=sys.stderr)
         return 1
 
-    print("[+] Process Fix A - docs/decisions.md integrity check passed: all numeric claims verified.")
+    print(
+        "[+] Process integrity check passed: all numeric claims grounded, zero unhedged absolutes."
+    )
     return 0
 
 

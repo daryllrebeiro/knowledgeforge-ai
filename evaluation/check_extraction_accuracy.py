@@ -71,8 +71,7 @@ def score_fields(actual: dict, expected: dict) -> tuple[int, int]:
     """Return (correct, total) over the top-level fields plus line-item count."""
     correct = 0
     total = 0
-    for field in ("vendor_name", "invoice_number", "invoice_date", "due_date",
-                  "total", "currency"):
+    for field in ("vendor_name", "invoice_number", "invoice_date", "due_date", "total", "currency"):
         if field not in expected:
             continue
         total += 1
@@ -109,8 +108,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Extraction accuracy ratchet")
     parser.add_argument("--golden-set", default="evaluation/extraction-golden-set.json")
     parser.add_argument("--results", help="Model output: [{document, fields, needs_review}]")
-    parser.add_argument("--update", action="store_true",
-                        help="Raise floors to the current run's values (never lower).")
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="Raise floors to the current run's values (never lower).",
+    )
     args = parser.parse_args(argv)
 
     golden_data = _load_json(args.golden_set)
@@ -128,12 +130,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"unknown document in results: {result['document']}")
             return 1
         correct, total = score_fields(result.get("fields", {}), entry["expected"])
-        scored.append({
-            "document": result["document"],
-            "score": correct,
-            "total": total,
-            "needs_review": bool(result.get("needs_review")),
-        })
+        scored.append(
+            {
+                "document": result["document"],
+                "score": correct,
+                "total": total,
+                "needs_review": bool(result.get("needs_review")),
+            }
+        )
 
     if not scored:
         print("no scored results")

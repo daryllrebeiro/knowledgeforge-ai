@@ -1,7 +1,5 @@
 """Unit tests for Item 14: Disaster Recovery and Database Integrity Verification."""
 
-import pytest
-
 from scripts.backup_restore_check import DatabaseIntegrityReport, check_integrity
 
 

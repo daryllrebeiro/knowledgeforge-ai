@@ -15,10 +15,10 @@ import json
 import os
 import sys
 import time
-from typing import Any
 import urllib.error
 import urllib.request
 import uuid
+from typing import Any
 
 BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 if len(sys.argv) > 1 and sys.argv[1].startswith("http"):
@@ -48,11 +48,13 @@ def register_tenant(name_prefix: str) -> tuple[str, str, dict[str, str]]:
     code, body = request(
         "/auth/register",
         "POST",
-        json.dumps({
-            "email": email,
-            "password": password,
-            "tenant_name": f"{name_prefix} Corp",
-        }).encode(),
+        json.dumps(
+            {
+                "email": email,
+                "password": password,
+                "tenant_name": f"{name_prefix} Corp",
+            }
+        ).encode(),
         {"Content-Type": "application/json"},
     )
     if code != 201:
@@ -109,7 +111,7 @@ def wait_for_extraction(headers: dict[str, str], document_id: str) -> dict[str, 
 
 
 def run_probe() -> int:
-    print(f"=== KnowledgeForge E2E Integration Suite ===")
+    print("=== KnowledgeForge E2E Integration Suite ===")
     print(f"Target URL: {BASE_URL}")
 
     # 1. Register Tenant A
@@ -128,7 +130,9 @@ def run_probe() -> int:
     doc_a_id = upload_document(token_a, "invoice-acme.md", invoice_content)
     wait_for_document_ready(headers_a, doc_a_id)
     extraction_a = wait_for_extraction(headers_a, doc_a_id)
-    assert extraction_a.get("schema_type") == "invoice", f"Expected invoice schema, got {extraction_a}"
+    assert extraction_a.get("schema_type") == "invoice", (
+        f"Expected invoice schema, got {extraction_a}"
+    )
     print("  -> Invoice ingested and extraction verified.")
 
     # 3. Multi-Tenant Isolation Probe
@@ -180,10 +184,12 @@ def run_probe() -> int:
     code, body = request(
         "/ask",
         "POST",
-        json.dumps({
-            "question": "What is the invoice number and due date for ACME?",
-            "structured_filters": {"schema_type": "invoice"},
-        }).encode(),
+        json.dumps(
+            {
+                "question": "What is the invoice number and due date for ACME?",
+                "structured_filters": {"schema_type": "invoice"},
+            }
+        ).encode(),
         headers_a,
     )
     assert code == 200, f"Structured ask failed: HTTP {code} {body[:200]!r}"
@@ -244,6 +250,7 @@ def main() -> int:
     except Exception as exc:
         print(f"\nFATAL: Integration suite failed: {exc}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         return 1
 

@@ -4,9 +4,9 @@
 import argparse
 import hashlib
 import os
-from pathlib import Path
 import sys
 import tempfile
+from pathlib import Path
 
 
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:
@@ -79,14 +79,17 @@ def run_live(opts: argparse.Namespace) -> int:
         print(f"[-] Error: Backup file not found at {backup_path}", file=sys.stderr)
         return 1
 
-    print(f"[*] Calculating SHA-256 for backup {backup_path.name} ({backup_path.stat().st_size} bytes)...")
+    print(
+        f"[*] Calculating SHA-256 for backup {backup_path.name} ({backup_path.stat().st_size} bytes)..."
+    )
     digest = verify_checksum(backup_path)
     print(f"[+] SHA-256: {digest}")
 
     if opts.db_url:
         print("[*] Running integrity checks against target database...")
-        from scripts.backup_restore_check import check_integrity
         import psycopg
+
+        from scripts.backup_restore_check import check_integrity
 
         with psycopg.connect(opts.db_url) as conn:
             report = check_integrity(conn)

@@ -1,7 +1,7 @@
 """Unit tests for live verification harnesses in dry-run mode."""
 
-from io import StringIO
 import sys
+from io import StringIO
 
 from scripts.verify_alerts_live import main as alerts_main
 from scripts.verify_dr_live import main as dr_main
