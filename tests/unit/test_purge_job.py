@@ -28,7 +28,8 @@ class MockPurgeCursor:
         if "SELECT count(*) FROM users" in q and "email_verified = false" in q:
             cutoff = params[0]
             count = sum(
-                1 for u in self.db.users.values()
+                1
+                for u in self.db.users.values()
                 if not u["email_verified"] and u["created_at"] < cutoff
             )
             self._last_result = [(count,)]
@@ -54,7 +55,7 @@ class MockPurgeCursor:
         return None
 
     def fetchall(self):
-        res = self._last_result[self._idx:]
+        res = self._last_result[self._idx :]
         self._idx = len(self._last_result)
         return res
 

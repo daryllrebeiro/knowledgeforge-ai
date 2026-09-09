@@ -1,13 +1,10 @@
 """Unit tests for email verification: token lifecycle, atomic consumption, rate limits, and budget policy."""
 
 from contextlib import contextmanager
-from datetime import UTC, datetime, timedelta
-import hashlib
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
-import pytest
 
 from knowledgeforge import api
 from knowledgeforge.config import get_settings
@@ -24,10 +21,10 @@ from knowledgeforge.security.mailer import (
     send_verification_email,
 )
 
-
 # ---------------------------------------------------------------------------
 # Mock DB connection for verification tokens
 # ---------------------------------------------------------------------------
+
 
 class MockVerificationDB:
     def __init__(self):
@@ -44,6 +41,7 @@ class MockVerificationDB:
         @contextmanager
         def _tx():
             yield self
+
         return _tx()
 
 
@@ -147,6 +145,7 @@ def _mock_conn(db: MockVerificationDB):
 # Tests
 # ---------------------------------------------------------------------------
 
+
 def test_create_and_atomic_consume_verification_token():
     db = MockVerificationDB()
     user_id = uuid4()
@@ -246,9 +245,7 @@ def test_api_resend_verification_rate_limited(monkeypatch):
     fresh_limiter = TokenBucketLimiter()
     monkeypatch.setattr(api, "limiter", fresh_limiter)
 
-    settings = get_settings().model_copy(
-        update={"email_verification_rate_limit_per_minute": 2}
-    )
+    settings = get_settings().model_copy(update={"email_verification_rate_limit_per_minute": 2})
     monkeypatch.setattr(api, "get_settings", lambda: settings)
 
     client = TestClient(app)

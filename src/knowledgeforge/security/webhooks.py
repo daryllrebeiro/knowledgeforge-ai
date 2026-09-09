@@ -1,18 +1,17 @@
 """Outbound tenant webhooks with HMAC signatures, outbox dispatch, and SSRF defense."""
 
-from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
 import json
 import logging
 import secrets
 import time
-from typing import Any
 import urllib.error
 import urllib.request
+from typing import Any
 from uuid import UUID, uuid4
 
-from knowledgeforge.security.ssrf import SSRFValidationError, validate_webhook_url
+from knowledgeforge.security.ssrf import validate_webhook_url
 
 logger = logging.getLogger("knowledgeforge.webhooks")
 
@@ -27,7 +26,7 @@ def generate_webhook_secret() -> str:
 
 def sign_webhook_payload(payload: str, secret: str, timestamp: int) -> str:
     """Generate HMAC SHA-256 signature for timestamp and payload string."""
-    to_sign = f"{timestamp}.{payload}".encode("utf-8")
+    to_sign = f"{timestamp}.{payload}".encode()
     return hmac.new(secret.encode("utf-8"), to_sign, hashlib.sha256).hexdigest()
 
 

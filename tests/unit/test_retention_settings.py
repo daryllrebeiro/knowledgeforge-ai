@@ -4,8 +4,8 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from knowledgeforge import api
 from knowledgeforge.main import app
@@ -40,7 +40,10 @@ class MockTenantSettingsCursor:
             return
 
         # Update tenant settings
-        if "UPDATE tenants" in q and "SET retention_days = %s, data_residency = %s WHERE id = %s" in q:
+        if (
+            "UPDATE tenants" in q
+            and "SET retention_days = %s, data_residency = %s WHERE id = %s" in q
+        ):
             retention_days, residency, t_id = params
             if t_id in self.db.tenants:
                 self.db.tenants[t_id]["retention_days"] = retention_days
@@ -51,7 +54,10 @@ class MockTenantSettingsCursor:
             return
 
         # Count expired documents (dry run)
-        if "SELECT count(*) FROM documents d JOIN tenants t ON d.tenant_id = t.id WHERE t.retention_days > 0" in q:
+        if (
+            "SELECT count(*) FROM documents d JOIN tenants t ON d.tenant_id = t.id WHERE t.retention_days > 0"
+            in q
+        ):
             now = datetime.now(UTC)
             count = 0
             for doc in self.db.documents.values():
@@ -64,7 +70,10 @@ class MockTenantSettingsCursor:
             return
 
         # Purge expired documents
-        if "DELETE FROM documents d USING tenants t WHERE d.tenant_id = t.id AND t.retention_days > 0" in q:
+        if (
+            "DELETE FROM documents d USING tenants t WHERE d.tenant_id = t.id AND t.retention_days > 0"
+            in q
+        ):
             now = datetime.now(UTC)
             deleted = []
             for doc_id, doc in list(self.db.documents.items()):
@@ -87,7 +96,7 @@ class MockTenantSettingsCursor:
         return None
 
     def fetchall(self):
-        res = self._last_result[self._idx:]
+        res = self._last_result[self._idx :]
         self._idx = len(self._last_result)
         return res
 
@@ -279,7 +288,6 @@ def test_tenant_settings_scoping(test_setup, monkeypatch):
     db, client = test_setup
     user_a = uuid4()
     tenant_a = uuid4()
-    user_b = uuid4()
     tenant_b = uuid4()
 
     app.dependency_overrides[api.require_owner] = lambda: (user_a, tenant_a, "owner", False)

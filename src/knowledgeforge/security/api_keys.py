@@ -20,6 +20,7 @@ class ApiKeyRow(NamedTuple):
     created_at: str
     last_used_at: str | None
     revoked: bool
+    scopes: list[str] = ["*"]
 
 
 def _hash_key(key: str) -> str:
@@ -27,15 +28,20 @@ def _hash_key(key: str) -> str:
 
 
 def create_api_key(
-    connection: Connection, tenant_id: UUID, user_id: UUID, name: str
+    connection: Connection,
+    tenant_id: UUID,
+    user_id: UUID,
+    name: str,
+    scopes: list[str] | None = None,
 ) -> tuple[UUID, str]:
     """Create a key and return (key_id, plaintext_key); the key is shown once."""
     key = f"kf_{secrets.token_urlsafe(32)}"
+    valid_scopes = scopes if scopes is not None and len(scopes) > 0 else ["*"]
     with connection.cursor() as cursor:
         cursor.execute(
-            "INSERT INTO api_keys (tenant_id, user_id, name, key_hash, key_prefix) "
-            "VALUES (%s, %s, %s, %s, %s) RETURNING id",
-            (tenant_id, user_id, name, _hash_key(key), key[:12]),
+            "INSERT INTO api_keys (tenant_id, user_id, name, key_hash, key_prefix, scopes) "
+            "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+            (tenant_id, user_id, name, _hash_key(key), key[:12], valid_scopes),
         )
         row = cursor.fetchone()
     if row is None:
@@ -43,12 +49,13 @@ def create_api_key(
     return UUID(str(row[0])), key
 
 
-def verify_api_key(connection: Connection, presented: str) -> tuple[UUID, UUID] | None:
-    """Return (user_id, tenant_id) for a live key, or None; records last use."""
+def verify_api_key(
+    connection: Connection, presented: str
+) -> tuple[UUID, UUID, list[str]] | None:
+    """Return (user_id, tenant_id, scopes) for a live key, or None; records last use."""
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT user_id, tenant_id FROM api_keys "
-            "WHERE key_hash = %s AND revoked_at IS NULL",
+            "SELECT user_id, tenant_id, scopes FROM api_keys WHERE key_hash = %s AND revoked_at IS NULL",
             (_hash_key(presented),),
         )
         row = cursor.fetchone()
@@ -61,13 +68,14 @@ def verify_api_key(connection: Connection, presented: str) -> tuple[UUID, UUID] 
             "WHERE key_hash = %s AND (last_used_at IS NULL OR last_used_at < now() - interval '1 hour')",
             (_hash_key(presented),),
         )
-    return UUID(str(row[0])), UUID(str(row[1]))
+    scopes = list(row[2]) if len(row) > 2 and row[2] is not None else ["*"]
+    return UUID(str(row[0])), UUID(str(row[1])), scopes
 
 
 def list_api_keys(connection: Connection, tenant_id: UUID) -> list[ApiKeyRow]:
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT id, name, key_prefix, created_at, last_used_at, revoked_at "
+            "SELECT id, name, key_prefix, created_at, last_used_at, revoked_at, scopes "
             "FROM api_keys WHERE tenant_id = %s ORDER BY created_at DESC",
             (tenant_id,),
         )
@@ -80,6 +88,7 @@ def list_api_keys(connection: Connection, tenant_id: UUID) -> list[ApiKeyRow]:
             created_at=str(row[3]),
             last_used_at=None if row[4] is None else str(row[4]),
             revoked=row[5] is not None,
+            scopes=list(row[6]) if len(row) > 6 and row[6] is not None else ["*"],
         )
         for row in rows
     ]

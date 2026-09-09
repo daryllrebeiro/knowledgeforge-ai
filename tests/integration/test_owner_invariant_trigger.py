@@ -23,7 +23,9 @@ def test_trigger_prevents_deleting_last_owner(database_url: str) -> None:
     with psycopg.connect(database_url) as connection:
         try:
             with connection.transaction():
-                connection.execute("INSERT INTO tenants (id, name) VALUES (%s, %s)", (tenant_id, "TriggerTest"))
+                connection.execute(
+                    "INSERT INTO tenants (id, name) VALUES (%s, %s)", (tenant_id, "TriggerTest")
+                )
                 connection.execute(
                     "INSERT INTO users (id, tenant_id, email, hashed_password) VALUES (%s, %s, %s, %s)",
                     (user_id, tenant_id, f"owner-{user_id}@example.com", "hash"),
@@ -53,7 +55,9 @@ def test_trigger_prevents_demoting_last_owner(database_url: str) -> None:
     with psycopg.connect(database_url) as connection:
         try:
             with connection.transaction():
-                connection.execute("INSERT INTO tenants (id, name) VALUES (%s, %s)", (tenant_id, "DemoteTest"))
+                connection.execute(
+                    "INSERT INTO tenants (id, name) VALUES (%s, %s)", (tenant_id, "DemoteTest")
+                )
                 connection.execute(
                     "INSERT INTO users (id, tenant_id, email, hashed_password) VALUES (%s, %s, %s, %s)",
                     (user_id, tenant_id, f"owner-{user_id}@example.com", "hash"),
@@ -84,7 +88,9 @@ def test_trigger_allows_demoting_owner_when_another_owner_exists(database_url: s
     with psycopg.connect(database_url) as connection:
         try:
             with connection.transaction():
-                connection.execute("INSERT INTO tenants (id, name) VALUES (%s, %s)", (tenant_id, "MultiOwnerTest"))
+                connection.execute(
+                    "INSERT INTO tenants (id, name) VALUES (%s, %s)", (tenant_id, "MultiOwnerTest")
+                )
                 for uid in (owner_1, owner_2):
                     connection.execute(
                         "INSERT INTO users (id, tenant_id, email, hashed_password) VALUES (%s, %s, %s, %s)",
@@ -121,7 +127,9 @@ def test_trigger_prevents_inserting_sole_member_without_owner(database_url: str)
     with psycopg.connect(database_url) as connection:
         try:
             with connection.transaction():
-                connection.execute("INSERT INTO tenants (id, name) VALUES (%s, %s)", (tenant_id, "NoOwnerTest"))
+                connection.execute(
+                    "INSERT INTO tenants (id, name) VALUES (%s, %s)", (tenant_id, "NoOwnerTest")
+                )
                 connection.execute(
                     "INSERT INTO users (id, tenant_id, email, hashed_password) VALUES (%s, %s, %s, %s)",
                     (user_id, tenant_id, f"member-{user_id}@example.com", "hash"),
@@ -134,7 +142,9 @@ def test_trigger_prevents_inserting_sole_member_without_owner(database_url: str)
                         "INSERT INTO tenant_memberships (tenant_id, user_id, role) VALUES (%s, %s, 'member')",
                         (tenant_id, user_id),
                     )
-            assert "Tenant must have at least one owner after membership creation" in str(exc_info.value)
+            assert "Tenant must have at least one owner after membership creation" in str(
+                exc_info.value
+            )
         finally:
             with connection.transaction():
                 connection.execute("DELETE FROM tenants WHERE id = %s", (tenant_id,))

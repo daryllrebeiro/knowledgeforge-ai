@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 class SSRFValidationError(ValueError):
     """Raised when a webhook URL targets private, loopback, or metadata addresses."""
+
     pass
 
 
@@ -17,12 +18,12 @@ BLOCKED_NETWORKS = [
     ipaddress.ip_network("172.16.0.0/12"),
     ipaddress.ip_network("192.168.0.0/16"),
     ipaddress.ip_network("169.254.0.0/16"),  # Link-local & cloud metadata (169.254.169.254)
-    ipaddress.ip_network("224.0.0.0/4"),    # Multicast
-    ipaddress.ip_network("240.0.0.0/4"),    # Reserved
+    ipaddress.ip_network("224.0.0.0/4"),  # Multicast
+    ipaddress.ip_network("240.0.0.0/4"),  # Reserved
     ipaddress.ip_network("::/128"),
-    ipaddress.ip_network("::1/128"),        # IPv6 loopback
-    ipaddress.ip_network("fc00::/7"),       # IPv6 unique local
-    ipaddress.ip_network("fe80::/10"),      # IPv6 link-local
+    ipaddress.ip_network("::1/128"),  # IPv6 loopback
+    ipaddress.ip_network("fc00::/7"),  # IPv6 unique local
+    ipaddress.ip_network("fe80::/10"),  # IPv6 link-local
 ]
 
 
@@ -47,7 +48,9 @@ def validate_webhook_url(url: str, *, allow_private: bool = False) -> str:
 
     parsed = urlparse(url)
     if parsed.scheme.lower() not in ("http", "https"):
-        raise SSRFValidationError(f"Invalid URL scheme '{parsed.scheme}'; only http and https are permitted")
+        raise SSRFValidationError(
+            f"Invalid URL scheme '{parsed.scheme}'; only http and https are permitted"
+        )
 
     hostname = parsed.hostname
     if not hostname:
@@ -65,16 +68,22 @@ def validate_webhook_url(url: str, *, allow_private: bool = False) -> str:
         # Check if hostname is already an IP literal
         ip = ipaddress.ip_address(hostname)
         if ip == ipaddress.ip_address("169.254.169.254"):
-            raise SSRFValidationError(f"SSRF violation: cloud metadata IP '{ip}' is strictly prohibited")
+            raise SSRFValidationError(
+                f"SSRF violation: cloud metadata IP '{ip}' is strictly prohibited"
+            )
         if not allow_private and is_ip_blocked(ip):
-            raise SSRFValidationError(f"SSRF violation: IP '{ip}' is in a reserved or private address space")
+            raise SSRFValidationError(
+                f"SSRF violation: IP '{ip}' is in a reserved or private address space"
+            )
         return url
     except ValueError:
         # Hostname is a domain name; resolve via DNS
         pass
 
     try:
-        addr_info = socket.getaddrinfo(hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
+        addr_info = socket.getaddrinfo(
+            hostname, parsed.port or (443 if parsed.scheme == "https" else 80)
+        )
     except socket.gaierror as exc:
         raise SSRFValidationError(f"Cannot resolve hostname '{hostname}': {exc}") from exc
 

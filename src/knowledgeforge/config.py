@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     # RS256 support (optional; if set, overrides jwt_secret_key)
     jwt_private_key: str = ""  # PEM-encoded RSA private key
-    jwt_public_key: str = ""   # PEM-encoded RSA public key
+    jwt_public_key: str = ""  # PEM-encoded RSA public key
     jwt_expire_minutes: int = 60
     refresh_token_expire_days: int = 30
     gcp_project_id: str = ""
@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     ask_rate_limit_per_minute: int = 60
     document_rate_limit_per_minute: int = 10
     auth_rate_limit_per_minute: int = 10
+    research_rate_limit_per_minute: int = 10
+    schema_rate_limit_per_minute: int = 20
     # Global registration rate limit (per hour) to prevent tenant farming
     registration_rate_limit_per_hour: int = 50
     # Most recent messages fed to follow-up question rewriting (both roles).
@@ -107,6 +109,8 @@ class Settings(BaseSettings):
     postmark_api_token: str = ""
     sendgrid_api_key: str = ""
     email_verification_rate_limit_per_minute: int = 5
+    # Distinct secret key for Zero-Knowledge Privacy Vault at-rest encryption.
+    vault_master_key: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 
@@ -114,10 +118,16 @@ class Settings(BaseSettings):
         """Fail closed on unsafe defaults regardless of environment."""
         problems: list[str] = []
         # Check if using RS256 (asymmetric keys)
-        using_rs256 = self.jwt_algorithm.upper() == "RS256" and self.jwt_private_key and self.jwt_public_key
+        using_rs256 = (
+            self.jwt_algorithm.upper() == "RS256" and self.jwt_private_key and self.jwt_public_key
+        )
         # If not using RS256, enforce HS256 secret strength
         if not using_rs256:
-            if self.jwt_secret_key in {"", "change-me-in-production", "REPLACE_WITH_32_CHAR_MIN_SECRET_OR_STARTUP_WILL_FAIL"}:
+            if self.jwt_secret_key in {
+                "",
+                "change-me-in-production",
+                "REPLACE_WITH_32_CHAR_MIN_SECRET_OR_STARTUP_WILL_FAIL",
+            }:
                 problems.append("JWT_SECRET_KEY must be set (cannot use default placeholder)")
             elif len(self.jwt_secret_key) < 32:
                 problems.append("JWT_SECRET_KEY must be at least 32 characters")
@@ -142,6 +152,14 @@ class Settings(BaseSettings):
         if self.local_billing and self.environment.lower() != "development":
             problems.append("LOCAL_BILLING may only be used in development")
         if self.environment.lower() != "development":
+            if self.vault_master_key in {
+                "",
+                "change-me-in-production",
+                "REPLACE_WITH_32_CHAR_MIN_VAULT_KEY",
+            }:
+                problems.append("VAULT_MASTER_KEY must be set in non-development environments")
+            elif len(self.vault_master_key) < 32:
+                problems.append("VAULT_MASTER_KEY must be at least 32 characters")
             billing_enabled = bool(self.stripe_secret_key or self.stripe_webhook_secret)
             if billing_enabled:
                 if not self.stripe_webhook_secret:

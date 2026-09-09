@@ -33,11 +33,19 @@ def verify_password(password: str, hashed_password: str) -> bool:
     return password_context.verify(password, hashed_password)
 
 
-def create_access_token(user_id: UUID, tenant_id: UUID, role: Role = "member", is_platform_admin: bool = False) -> str:
+def create_access_token(
+    user_id: UUID, tenant_id: UUID, role: Role = "member", is_platform_admin: bool = False
+) -> str:
     settings = get_settings()
     expires = datetime.now(UTC) + timedelta(minutes=settings.jwt_expire_minutes)
     return jwt.encode(
-        {"sub": str(user_id), "tenant_id": str(tenant_id), "role": role, "is_platform_admin": is_platform_admin, "exp": expires},
+        {
+            "sub": str(user_id),
+            "tenant_id": str(tenant_id),
+            "role": role,
+            "is_platform_admin": is_platform_admin,
+            "exp": expires,
+        },
         settings.jwt_secret_key,
         algorithm=settings.jwt_algorithm,
     )
@@ -191,6 +199,8 @@ def get_current_user(
         if identity is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
         request.state.tenant_id = identity[1]
+        scopes = list(identity[2]) if len(identity) > 2 else ["*"]
+        request.state.api_key_scopes = scopes
         # API keys are tenant-scoped; fetch role from membership
         role = get_user_role_for_tenant(identity[0], identity[1]) or "member"
         is_platform_admin = get_user_platform_admin(identity[0])
@@ -213,6 +223,30 @@ def require_tenant_role(allowed_roles: list[Role]):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Requires one of roles: {', '.join(allowed_roles)}",
             )
+        return user
+
+    return checker
+
+
+def require_scope(required_scope: str):
+    """Dependency factory enforcing API key permission scopes.
+
+    If request is authenticated via an API key, verifies that the key contains
+    either the explicit required_scope or the wildcard '*' scope.
+    If authenticated via JWT session cookies/bearer, scopes are None and access is allowed.
+    """
+
+    def checker(
+        request: Request,
+        user: tuple[UUID, UUID, Role, bool] = Depends(get_current_user),
+    ) -> tuple[UUID, UUID, Role, bool]:
+        scopes = getattr(request.state, "api_key_scopes", None)
+        if scopes is not None:
+            if required_scope not in scopes and "*" not in scopes:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"API key missing required scope: {required_scope}",
+                )
         return user
 
     return checker
@@ -388,7 +422,9 @@ def accept_invitation(
     # Enforce email match if the invitation was pre-assigned to an email.
     if inv_email is not None and user_email is not None:
         if inv_email.lower() != user_email.lower():
-            raise HTTPException(status_code=403, detail="Invitation email does not match your account")
+            raise HTTPException(
+                status_code=403, detail="Invitation email does not match your account"
+            )
     elif inv_email is not None and user_email is None:
         # Invitation requires a specific email but caller has none on record.
         raise HTTPException(status_code=403, detail="Invitation requires email verification")

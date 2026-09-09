@@ -9,11 +9,13 @@ def make_settings(**overrides: object) -> Settings:
     gemini_api_key = overrides.pop("gemini_api_key", "real-key")
     local_embeddings = overrides.pop("local_embeddings", False)
     environment = overrides.pop("environment", "staging")
+    vault_master_key = overrides.pop("vault_master_key", "a-vault-secret-that-is-at-least-32-chars-long")
     return Settings(
         environment=environment,
         jwt_secret_key=jwt_secret_key,
         gemini_api_key=gemini_api_key,
         local_embeddings=local_embeddings,
+        vault_master_key=vault_master_key,
         _env_file=None,
         **overrides,
     )
@@ -32,7 +34,9 @@ def test_default_jwt_secret_is_rejected_everywhere() -> None:
 
 def test_placeholder_jwt_secret_is_rejected_everywhere() -> None:
     with pytest.raises(RuntimeError, match="JWT_SECRET_KEY"):
-        make_settings(jwt_secret_key="REPLACE_WITH_32_CHAR_MIN_SECRET_OR_STARTUP_WILL_FAIL").validate_runtime()
+        make_settings(
+            jwt_secret_key="REPLACE_WITH_32_CHAR_MIN_SECRET_OR_STARTUP_WILL_FAIL"
+        ).validate_runtime()
 
 
 def test_empty_jwt_secret_is_rejected_everywhere() -> None:
@@ -50,7 +54,9 @@ def test_missing_gemini_key_rejected_unless_local_embeddings() -> None:
         make_settings(gemini_api_key="replace-me").validate_runtime()
 
     # Both local_embeddings AND local_generation must be True to bypass Gemini key requirement
-    make_settings(gemini_api_key="replace-me", local_embeddings=True, local_generation=True).validate_runtime()
+    make_settings(
+        gemini_api_key="replace-me", local_embeddings=True, local_generation=True
+    ).validate_runtime()
 
 
 def test_valid_production_settings_pass() -> None:
@@ -59,13 +65,33 @@ def test_valid_production_settings_pass() -> None:
 
 def test_billing_webhook_secret_required_when_billing_enabled_outside_dev() -> None:
     with pytest.raises(RuntimeError, match="STRIPE_WEBHOOK_SECRET must be configured"):
-        make_settings(environment="production", stripe_secret_key="sk_live_123", stripe_webhook_secret="").validate_runtime()
+        make_settings(
+            environment="production", stripe_secret_key="sk_live_123", stripe_webhook_secret=""
+        ).validate_runtime()
 
 
 def test_billing_secret_key_required_when_webhook_secret_set_outside_dev() -> None:
     with pytest.raises(RuntimeError, match="STRIPE_SECRET_KEY must be configured"):
-        make_settings(environment="production", stripe_secret_key="", stripe_webhook_secret="whsec_123").validate_runtime()
+        make_settings(
+            environment="production", stripe_secret_key="", stripe_webhook_secret="whsec_123"
+        ).validate_runtime()
 
 
 def test_billing_fully_configured_passes_outside_dev() -> None:
-    make_settings(environment="production", stripe_secret_key="sk_live_123", stripe_webhook_secret="whsec_123").validate_runtime()
+    make_settings(
+        environment="production", stripe_secret_key="sk_live_123", stripe_webhook_secret="whsec_123"
+    ).validate_runtime()
+
+
+def test_vault_master_key_required_outside_development() -> None:
+    with pytest.raises(RuntimeError, match="VAULT_MASTER_KEY must be set"):
+        make_settings(environment="production", vault_master_key="").validate_runtime()
+
+    with pytest.raises(RuntimeError, match="VAULT_MASTER_KEY must be set"):
+        make_settings(environment="production", vault_master_key="change-me-in-production").validate_runtime()
+
+
+def test_vault_master_key_min_length_enforced_outside_dev() -> None:
+    with pytest.raises(RuntimeError, match="VAULT_MASTER_KEY must be at least 32 characters"):
+        make_settings(environment="production", vault_master_key="too-short-key").validate_runtime()
+

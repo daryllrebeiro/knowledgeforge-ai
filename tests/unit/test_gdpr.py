@@ -1,10 +1,10 @@
 """Unit tests for Item 12: GDPR Article 20 Data Portability Export."""
 
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
-import pytest
 
 from knowledgeforge import api
 from knowledgeforge.ingestion.store import export_tenant_data
@@ -33,7 +33,9 @@ class MockCursor:
             t_id = params[0]
             if t_id in self.db.tenants:
                 t = self.db.tenants[t_id]
-                self._last_result = [(t["id"], t["name"], t["created_at"], t["tier"], t["subscription_status"])]
+                self._last_result = [
+                    (t["id"], t["name"], t["created_at"], t["tier"], t["subscription_status"])
+                ]
             else:
                 self._last_result = []
             return
@@ -52,11 +54,18 @@ class MockCursor:
             t_id = params[0]
             rows = []
             for d in self.db.documents.get(t_id, []):
-                rows.append((
-                    d["id"], d["title"], d["source_filename"],
-                    d.get("storage_uri", "gs://test-bucket/file.pdf"),
-                    d["doc_type"], d["status"], d["version"], d["created_at"]
-                ))
+                rows.append(
+                    (
+                        d["id"],
+                        d["title"],
+                        d["source_filename"],
+                        d.get("storage_uri", "gs://test-bucket/file.pdf"),
+                        d["doc_type"],
+                        d["status"],
+                        d["version"],
+                        d["created_at"],
+                    )
+                )
             self._last_result = rows
             return
 
@@ -65,7 +74,16 @@ class MockCursor:
             t_id = params[0]
             rows = []
             for c in self.db.chunks.get(t_id, []):
-                rows.append((c["id"], c["document_id"], c["page"], c["section"], c["chunk_text"], c["created_at"]))
+                rows.append(
+                    (
+                        c["id"],
+                        c["document_id"],
+                        c["page"],
+                        c["section"],
+                        c["chunk_text"],
+                        c["created_at"],
+                    )
+                )
             self._last_result = rows
             return
 
@@ -74,10 +92,18 @@ class MockCursor:
             t_id = params[0]
             rows = []
             for e in self.db.extractions.get(t_id, []):
-                rows.append((
-                    e["document_id"], e["schema_type"], e["schema_version"], e["model"],
-                    e["fields"], e["field_confidence"], e["overall_confidence"], e["created_at"]
-                ))
+                rows.append(
+                    (
+                        e["document_id"],
+                        e["schema_type"],
+                        e["schema_version"],
+                        e["model"],
+                        e["fields"],
+                        e["field_confidence"],
+                        e["overall_confidence"],
+                        e["created_at"],
+                    )
+                )
             self._last_result = rows
             return
 
@@ -100,11 +126,23 @@ class MockCursor:
             return
 
         # 6. API Keys
-        if "SELECT id, name, key_prefix, created_at, last_used_at, revoked FROM api_keys WHERE tenant_id = %s" in q:
+        if (
+            "SELECT id, name, key_prefix, created_at, last_used_at, revoked FROM api_keys WHERE tenant_id = %s"
+            in q
+        ):
             t_id = params[0]
             rows = []
             for k in self.db.api_keys.get(t_id, []):
-                rows.append((k["id"], k["name"], k["key_prefix"], k["created_at"], k["last_used_at"], k["revoked"]))
+                rows.append(
+                    (
+                        k["id"],
+                        k["name"],
+                        k["key_prefix"],
+                        k["created_at"],
+                        k["last_used_at"],
+                        k["revoked"],
+                    )
+                )
             self._last_result = rows
             return
 
@@ -113,7 +151,9 @@ class MockCursor:
             t_id = params[0]
             rows = []
             for b in self.db.billing_events.get(t_id, []):
-                rows.append((b["event_id"], b["event_type"], b.get("processed_at"), b["created_at"]))
+                rows.append(
+                    (b["event_id"], b["event_type"], b.get("processed_at"), b["created_at"])
+                )
             self._last_result = rows
             return
 
@@ -122,7 +162,16 @@ class MockCursor:
             t_id = params[0]
             rows = []
             for inv in self.db.invitations.get(t_id, []):
-                rows.append((inv["id"], inv["email"], inv["role"], inv["expires_at"], inv.get("accepted_at"), inv["created_at"]))
+                rows.append(
+                    (
+                        inv["id"],
+                        inv["email"],
+                        inv["role"],
+                        inv["expires_at"],
+                        inv.get("accepted_at"),
+                        inv["created_at"],
+                    )
+                )
             self._last_result = rows
             return
 
@@ -147,7 +196,7 @@ class MockCursor:
         return None
 
     def fetchall(self):
-        res = self._last_result[self._idx:]
+        res = self._last_result[self._idx :]
         self._idx = len(self._last_result)
         return res
 
@@ -200,77 +249,95 @@ def test_export_tenant_data_complete():
         "tier": "scale",
         "subscription_status": "active",
     }
-    db.users[tenant_id] = [{
-        "id": user_id,
-        "email": "owner@acme.com",
-        "role": "owner",
-        "joined_at": now,
-        "email_verified": True,
-    }]
-    db.documents[tenant_id] = [{
-        "id": doc_id,
-        "title": "Master Services Agreement",
-        "source_filename": "msa.pdf",
-        "storage_uri": "gs://kf-docs/msa.pdf",
-        "doc_type": "pdf",
-        "status": "indexed",
-        "version": 1,
-        "created_at": now,
-    }]
+    db.users[tenant_id] = [
+        {
+            "id": user_id,
+            "email": "owner@acme.com",
+            "role": "owner",
+            "joined_at": now,
+            "email_verified": True,
+        }
+    ]
+    db.documents[tenant_id] = [
+        {
+            "id": doc_id,
+            "title": "Master Services Agreement",
+            "source_filename": "msa.pdf",
+            "storage_uri": "gs://kf-docs/msa.pdf",
+            "doc_type": "pdf",
+            "status": "indexed",
+            "version": 1,
+            "created_at": now,
+        }
+    ]
     chunk_id = uuid4()
-    db.chunks[tenant_id] = [{
-        "id": chunk_id,
-        "document_id": doc_id,
-        "page": 1,
-        "section": "Section 1: Scope",
-        "chunk_text": "This Agreement governs the relationship...",
-        "created_at": now,
-    }]
-    db.extractions[tenant_id] = [{
-        "document_id": doc_id,
-        "schema_type": "contract",
-        "schema_version": 1,
-        "model": "gemini-2.5-flash",
-        "fields": {"counterparty": "Global Tech"},
-        "field_confidence": {"counterparty": 0.95},
-        "overall_confidence": 0.95,
-        "created_at": now,
-    }]
-    db.conversations[tenant_id] = [{
-        "id": conv_id,
-        "title": "Contract Analysis",
-        "created_at": now,
-        "updated_at": now,
-    }]
-    db.messages[conv_id] = [{
-        "role": "user",
-        "content": "What is the liability cap?",
-        "citations": [],
-        "created_at": now,
-    }]
-    db.api_keys[tenant_id] = [{
-        "id": key_id,
-        "name": "Production Key",
-        "key_prefix": "kf_live_1234",
-        "created_at": now,
-        "last_used_at": now,
-        "revoked": False,
-    }]
-    db.billing_events[tenant_id] = [{
-        "event_id": "evt_test_123",
-        "event_type": "customer.subscription.created",
-        "processed_at": now,
-        "created_at": now,
-    }]
+    db.chunks[tenant_id] = [
+        {
+            "id": chunk_id,
+            "document_id": doc_id,
+            "page": 1,
+            "section": "Section 1: Scope",
+            "chunk_text": "This Agreement governs the relationship...",
+            "created_at": now,
+        }
+    ]
+    db.extractions[tenant_id] = [
+        {
+            "document_id": doc_id,
+            "schema_type": "contract",
+            "schema_version": 1,
+            "model": "gemini-2.5-flash",
+            "fields": {"counterparty": "Global Tech"},
+            "field_confidence": {"counterparty": 0.95},
+            "overall_confidence": 0.95,
+            "created_at": now,
+        }
+    ]
+    db.conversations[tenant_id] = [
+        {
+            "id": conv_id,
+            "title": "Contract Analysis",
+            "created_at": now,
+            "updated_at": now,
+        }
+    ]
+    db.messages[conv_id] = [
+        {
+            "role": "user",
+            "content": "What is the liability cap?",
+            "citations": [],
+            "created_at": now,
+        }
+    ]
+    db.api_keys[tenant_id] = [
+        {
+            "id": key_id,
+            "name": "Production Key",
+            "key_prefix": "kf_live_1234",
+            "created_at": now,
+            "last_used_at": now,
+            "revoked": False,
+        }
+    ]
+    db.billing_events[tenant_id] = [
+        {
+            "event_id": "evt_test_123",
+            "event_type": "customer.subscription.created",
+            "processed_at": now,
+            "created_at": now,
+        }
+    ]
     inv_id = uuid4()
-    db.invitations[tenant_id] = [{
-        "id": inv_id,
-        "email": "invitee@acme.com",
-        "role": "member",
-        "expires_at": now + timedelta(days=7),
-        "accepted_at": None,
-        "created_at": now,
-    }]
+    db.invitations[tenant_id] = [
+        {
+            "id": inv_id,
+            "email": "invitee@acme.com",
+            "role": "member",
+            "expires_at": now + timedelta(days=7),
+            "accepted_at": None,
+            "created_at": now,
+        }
+    ]
 
     conn = MockConnection(db)
     result = export_tenant_data(conn, tenant_id)
@@ -312,8 +379,16 @@ def test_all_tenant_scoped_categories_accounted_for():
     conn = MockConnection(db)
     result = export_tenant_data(conn, tenant_id)
     expected_categories = {
-        "tenant", "users", "documents", "chunks", "extractions",
-        "conversations", "api_keys", "billing_events", "invitations", "export_metadata"
+        "tenant",
+        "users",
+        "documents",
+        "chunks",
+        "extractions",
+        "conversations",
+        "api_keys",
+        "billing_events",
+        "invitations",
+        "export_metadata",
     }
     assert set(result.keys()) == expected_categories
 
@@ -358,9 +433,6 @@ def test_export_tenant_data_nonexistent():
     conn = MockConnection(db)
     result = export_tenant_data(conn, uuid4())
     assert result == {}
-
-
-from contextlib import contextmanager
 
 
 def test_export_account_endpoint_owner(monkeypatch):

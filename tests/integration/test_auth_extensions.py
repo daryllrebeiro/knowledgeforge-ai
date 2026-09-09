@@ -72,6 +72,7 @@ def test_create_api_key_returns_plaintext_once(monkeypatch) -> None:
         "name": "CI pipeline",
         "key": "kf_secret",
         "key_prefix": "kf_secret"[:12],
+        "scopes": ["*"],
     }
 
 

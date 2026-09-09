@@ -1,5 +1,8 @@
+import html
 import json
 import logging
+import re
+import secrets
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
@@ -26,6 +29,22 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 from knowledgeforge.admin_ui import ADMIN_HTML
+from knowledgeforge.billing import (
+    CheckoutSessionRequest,
+    CheckoutSessionResponse,
+    CustomerPortalRequest,
+    CustomerPortalResponse,
+    SubscriptionResponse,
+    TenantBillingAdminView,
+    UpdateTenantTierRequest,
+    create_checkout_session,
+    create_portal_session,
+    get_tenant_billing_info,
+    list_tenants_billing_admin,
+    process_stripe_event,
+    update_tenant_tier_admin,
+    verify_stripe_signature,
+)
 from knowledgeforge.config import Settings, get_settings
 from knowledgeforge.conversations import (
     ConversationRow,
@@ -37,21 +56,46 @@ from knowledgeforge.conversations import (
     list_conversations,
 )
 from knowledgeforge.db import get_connection
+from knowledgeforge.extraction.diff_engine import diff_documents_from_db
+from knowledgeforge.extraction.dynamic_schemas import (
+    create_tenant_schema,
+    get_tenant_schema,
+    infer_schema_from_sample,
+    list_tenant_schemas,
+)
+from knowledgeforge.extraction.query_parser import (
+    FilterConfidence,
+    NaturalFilterResult,
+    parse_natural_filter,
+)
 from knowledgeforge.extraction.store import (
     DocumentExtractionRow,
     correct_document_extraction,
     find_document_ids_by_fields,
+    find_document_ids_with_ranges,
     get_document_extraction,
     get_extraction_job,
     insert_extraction_job,
     list_all_extractions_review_admin,
     list_extractions,
+    list_extractions_with_ranges,
 )
 from knowledgeforge.generation.condense import rewrite_followup_question
 from knowledgeforge.generation.gemini import GeminiTextGenerator, GeminiTextStream
-from knowledgeforge.generation.generate import Citation, generate_answer, parse_citations
+from knowledgeforge.generation.generate import (
+    Citation,
+    GeneratedAnswer,
+    generate_answer,
+    parse_citations,
+)
 from knowledgeforge.generation.local import local_answer
 from knowledgeforge.generation.prompt import LabeledChunk, LabeledExtraction, build_prompt
+from knowledgeforge.generation.research_planner import (
+    DeepResearchPlanner,
+    get_research_job,
+    list_research_jobs,
+)
+from knowledgeforge.generation.verifier import EntailmentVerifier
 from knowledgeforge.ingestion.chunk import TextChunk, chunk_pages
 from knowledgeforge.ingestion.dedup import content_hash, decide_dedup
 from knowledgeforge.ingestion.embed import embed_texts, embed_texts_local
@@ -70,6 +114,7 @@ from knowledgeforge.ingestion.store import (
     export_tenant_data,
     find_document_by_hash,
     find_latest_document_by_filename,
+    get_document_content_and_chunks,
     get_document_detail,
     get_document_ingest_info,
     list_all_failed_ingestions,
@@ -94,7 +139,13 @@ from knowledgeforge.reliability import (
     build_circuit_breaker,
     make_redis_key,
 )
+from knowledgeforge.retrieval.graph_traversal import traverse_entity_neighborhood
 from knowledgeforge.retrieval.retrieve import retrieve_chunks
+from knowledgeforge.retrieval.table_qa import (
+    QueryIntent,
+    TableQASynthesizer,
+    classify_query_intent,
+)
 from knowledgeforge.security.api_keys import create_api_key, list_api_keys, revoke_api_key
 from knowledgeforge.security.auth import (
     accept_invitation,
@@ -110,29 +161,26 @@ from knowledgeforge.security.auth import (
     hash_password,
     require_owner,
     require_platform_admin,
+    require_scope,
     set_auth_cookies,
     verify_password,
 )
-from knowledgeforge.security.mailer import send_verification_email
 from knowledgeforge.security.budget import (
+    estimate_research_token_cost,
     estimate_token_cost,
     get_extraction_budget,
     get_platform_token_budget,
     get_tenant_budget_limits,
     get_token_budget,
 )
+from knowledgeforge.security.audit import record_audit_log
+from knowledgeforge.security.mailer import send_verification_email
+from knowledgeforge.security.privacy_vault import PrivacyVault
 from knowledgeforge.security.refresh import (
     InvalidRefreshToken,
     create_refresh_token,
     revoke_refresh_family,
     rotate_refresh_token,
-)
-from knowledgeforge.security.ssrf import SSRFValidationError, validate_webhook_url
-from knowledgeforge.security.webhooks import (
-    delete_webhook,
-    generate_webhook_secret,
-    list_webhooks,
-    register_webhook,
 )
 from knowledgeforge.security.sso import (
     build_authorization_url,
@@ -143,23 +191,15 @@ from knowledgeforge.security.sso import (
     validate_enterprise_tier,
     verify_sso_state,
 )
-from knowledgeforge.worker.cloud import CloudStorageClient, PubSubPublisher
-from knowledgeforge.billing import (
-    CheckoutSessionRequest,
-    CheckoutSessionResponse,
-    CustomerPortalRequest,
-    CustomerPortalResponse,
-    SubscriptionResponse,
-    TenantBillingAdminView,
-    UpdateTenantTierRequest,
-    create_checkout_session,
-    create_portal_session,
-    get_tenant_billing_info,
-    list_tenants_billing_admin,
-    process_stripe_event,
-    update_tenant_tier_admin,
-    verify_stripe_signature,
+from knowledgeforge.security.ssrf import SSRFValidationError, validate_webhook_url
+from knowledgeforge.security.webhooks import (
+    delete_webhook,
+    generate_webhook_secret,
+    list_webhooks,
+    register_webhook,
 )
+from knowledgeforge.worker.auditor import list_conflicts, resolve_conflict
+from knowledgeforge.worker.cloud import CloudStorageClient, PubSubPublisher
 
 logger = logging.getLogger("knowledgeforge.api")
 
@@ -186,6 +226,7 @@ class DocumentUploadResponse(BaseModel):
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=10_000)
     document_id: UUID | None = None
+    document_ids: list[UUID] | None = None
     # Restrict retrieval to one document type ("pdf", "docx", "markdown", "text", "html").
     doc_type: str | None = Field(default=None, max_length=20)
     # Optional metadata filters for retrieval scope (F2).
@@ -217,15 +258,26 @@ class StructuredFilters(BaseModel):
         return {field: value for field, value in values.items() if value is not None}
 
 
+class CitationHighlight(BaseModel):
+    page: int
+    box: list[float]  # [x0, y0, x1, y1] normalized coordinates
+    text_snippet: str | None = None
+
+
 class CitationResponse(BaseModel):
     document_id: UUID
     page: int | None = None
+    highlights: list[CitationHighlight] = Field(default_factory=list)
 
 
 class AskResponse(BaseModel):
     answer: str
     citations: list[CitationResponse]
     conversation_id: UUID | None = None
+    grounding_score: float = 1.0
+    is_grounded: bool = True
+    sql_executed: str | None = None
+    table_results: dict[str, Any] | None = None
 
 
 class ConversationCreateRequest(BaseModel):
@@ -335,10 +387,164 @@ class ExtractionResponse(BaseModel):
     created_at: str
 
 
+class DynamicSchemaCreateRequest(BaseModel):
+    schema_name: str = Field(min_length=2, max_length=100)
+    json_schema: dict[str, Any]
+    description: str = Field(default="", max_length=500)
+    field_descriptions: dict[str, str] = Field(default_factory=dict)
+    version: int = Field(default=1, ge=1)
+
+
+class DynamicSchemaResponse(BaseModel):
+    id: UUID
+    schema_name: str
+    schema_version: int
+    description: str
+    json_schema: dict[str, Any]
+    field_descriptions: dict[str, str]
+    created_at: str
+
+
+class InferSchemaRequest(BaseModel):
+    sample_text: str = Field(min_length=10)
+    schema_name: str = Field(default="inferred_schema")
+
+
+class InferSchemaResponse(BaseModel):
+    schema_name: str
+    json_schema: dict[str, Any]
+
+
+class GraphQueryRequest(BaseModel):
+    seed_entities: list[str] = Field(min_length=1, max_length=20)
+    max_depth: int = Field(default=2, ge=1, le=4)
+    limit: int = Field(default=25, ge=1, le=100)
+
+
+class GraphPathResponse(BaseModel):
+    source_name: str
+    relation_type: str
+    target_name: str
+    depth: int
+
+
+class GraphQueryResponse(BaseModel):
+    paths: list[GraphPathResponse]
+
+
+class DocumentDiffRequest(BaseModel):
+    source_doc_id: UUID
+    target_doc_id: UUID
+
+
+class ClauseDiffResponse(BaseModel):
+    section_name: str
+    change_type: str
+    risk_severity: str
+    source_clause: str | None
+    target_clause: str | None
+    similarity: float
+    delta_summary: str
+
+
+class DocumentDiffResponse(BaseModel):
+    source_doc_id: UUID
+    target_doc_id: UUID
+    overall_risk_score: str
+    added_count: int
+    removed_count: int
+    modified_count: int
+    clauses: list[ClauseDiffResponse]
+    executive_summary: str
+
+
+class ConflictResponse(BaseModel):
+    id: UUID
+    doc_a_id: UUID
+    doc_b_id: UUID
+    conflict_category: str
+    description: str
+    severity: str
+    status: str
+    created_at: str
+
+
+class ConflictResolveRequest(BaseModel):
+    status: str = Field(default="resolved")
+
+
+class ResearchJobCreateRequest(BaseModel):
+    brief: str = Field(min_length=5, max_length=2000)
+    max_iterations: int = Field(default=3, ge=1, le=10)
+
+
+class ResearchJobResponse(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    query: str
+    status: str
+    plan: list[dict[str, Any]] = []
+    steps: list[dict[str, Any]] = []
+    sources: list[str] = []
+    final_report: str | None = None
+    completeness_score: float | None = None
+    created_at: str | None = None
+    completed_at: str | None = None
+
+
+class ResearchJobListItem(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    query: str
+    status: str
+    created_at: str | None = None
+    completed_at: str | None = None
+
+
+class MaskTextRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=50000)
+    store_in_vault: bool = True
+
+
+class MaskTextResponse(BaseModel):
+    masked_text: str
+    tokens_count: int
+    entity_types: list[str]
+
+
+class UnmaskTextRequest(BaseModel):
+    masked_text: str
+
+
+class UnmaskTextResponse(BaseModel):
+    unmasked_text: str
+
+
+class VaultEntryResponse(BaseModel):
+    id: str
+    surrogate_token: str
+    entity_type: str
+    created_at: str | None
+
+
 class ExtractionListResponse(BaseModel):
     extractions: list[ExtractionResponse]
     limit: int
     offset: int
+
+
+class NaturalFilterRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=500)
+    limit: int = Field(default=50, ge=1, le=200)
+    offset: int = Field(default=0, ge=0)
+
+
+class NaturalFilterResponse(BaseModel):
+    extractions: list[ExtractionResponse]
+    limit: int
+    offset: int
+    clarification_needed: str | None = None
+    applied_filters: dict[str, Any] = Field(default_factory=dict)
 
 
 class ExtractionJobResponse(BaseModel):
@@ -404,6 +610,30 @@ class ChunkPreviewResponse(BaseModel):
     offset: int
 
 
+class DocumentPageContent(BaseModel):
+    page: int
+    text: str
+
+
+class DocumentChunkItem(BaseModel):
+    chunk_id: UUID
+    page: int
+    section: str | None = None
+    text: str
+    start_char: int | None = None
+    end_char: int | None = None
+    bounding_boxes: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DocumentContentResponse(BaseModel):
+    document_id: UUID
+    title: str
+    doc_type: str
+    storage_uri: str | None = None
+    pages: list[DocumentPageContent]
+    chunks: list[DocumentChunkItem]
+
+
 class UsageDayItem(BaseModel):
     day: str
     queries: int
@@ -445,6 +675,7 @@ class RefreshRequest(BaseModel):
 
 class ApiKeyCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
+    scopes: list[str] = Field(default_factory=lambda: ["*"])
 
 
 class ApiKeyCreatedResponse(BaseModel):
@@ -453,6 +684,7 @@ class ApiKeyCreatedResponse(BaseModel):
     # The plaintext key is shown exactly once; only its hash is stored.
     key: str
     key_prefix: str
+    scopes: list[str] = Field(default_factory=lambda: ["*"])
 
 
 class ApiKeyListedResponse(BaseModel):
@@ -462,6 +694,7 @@ class ApiKeyListedResponse(BaseModel):
     created_at: str
     last_used_at: str | None
     revoked: bool
+    scopes: list[str] = Field(default_factory=lambda: ["*"])
 
 
 class VerifyEmailRequest(BaseModel):
@@ -481,7 +714,9 @@ class ResendVerificationRequest(BaseModel):
 def register(request: RegisterRequest, http_request: Request, response: Response) -> TokenResponse:
     settings = get_settings()
     # Global registration rate limit (prevents tenant farming)
-    limiter.check("global", "register", settings.registration_rate_limit_per_hour, window_seconds=3600)
+    limiter.check(
+        "global", "register", settings.registration_rate_limit_per_hour, window_seconds=3600
+    )
     # Per-IP rate limit
     limiter.check(
         _client_subject(http_request, "register"),
@@ -536,10 +771,10 @@ def register(request: RegisterRequest, http_request: Request, response: Response
         try:
             send_verification_email(request.email.lower(), verify_token)
         except Exception:
-            logger.warning("Failed to dispatch verification email to %s", request.email, exc_info=True)
-    return TokenResponse(
-        access_token=access_token, refresh_token=refresh_token
-    )
+            logger.warning(
+                "Failed to dispatch verification email to %s", request.email, exc_info=True
+            )
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.post("/auth/login", response_model=TokenResponse)
@@ -567,9 +802,7 @@ def login(request: LoginRequest, http_request: Request, response: Response) -> T
         refresh_token = create_refresh_token(connection, user_id)
     access_token = create_access_token(user_id, tenant_id, role, is_platform_admin)
     set_auth_cookies(response, access_token, refresh_token, settings)
-    return TokenResponse(
-        access_token=access_token, refresh_token=refresh_token
-    )
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.post("/auth/refresh", response_model=TokenResponse)
@@ -595,9 +828,7 @@ def refresh(request: RefreshRequest, http_request: Request, response: Response) 
     is_platform_admin = get_user_platform_admin(user_id)
     access_token = create_access_token(user_id, tenant_id, role, is_platform_admin)
     set_auth_cookies(response, access_token, new_refresh, settings)
-    return TokenResponse(
-        access_token=access_token, refresh_token=new_refresh
-    )
+    return TokenResponse(access_token=access_token, refresh_token=new_refresh)
 
 
 @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -632,6 +863,7 @@ def verify_email_endpoint(request: VerifyEmailRequest) -> VerifyEmailResponse:
     # Invalidate tenant budget cache so verified tier limits take effect immediately
     if tenant_id:
         from knowledgeforge.security.budget import invalidate_tenant_budget_cache
+
         invalidate_tenant_budget_cache(tenant_id)
 
     return VerifyEmailResponse(message="Email successfully verified", verified=True)
@@ -672,7 +904,9 @@ def resend_verification_endpoint(
             connection.commit()
             send_verification_email(email, verify_token)
 
-    return {"message": "If the account exists and is unverified, a new verification link has been sent"}
+    return {
+        "message": "If the account exists and is unverified, a new verification link has been sent"
+    }
 
 
 @router.get("/.well-known/jwks.json", tags=["auth"])
@@ -686,23 +920,21 @@ def jwks() -> dict:
         raise HTTPException(status_code=404, detail="JWKS not available (not using RS256)")
     # Extract key parameters from PEM
     import base64
-    import re
+
     # Parse PEM to extract modulus and exponent
     pem = settings.jwt_public_key.strip()
-    # Remove PEM headers
-    b64 = pem.replace("-----BEGIN PUBLIC KEY-----", "").replace("-----END PUBLIC KEY-----", "").replace("\n", "").strip()
-    der = base64.b64decode(b64)
-    # Simple parsing for RSA public key (SubjectPublicKeyInfo)
-    # This is a simplified approach; in production use cryptography library
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
+
     public_key = serialization.load_pem_public_key(pem.encode())
     if not isinstance(public_key, rsa.RSAPublicKey):
         raise HTTPException(status_code=500, detail="Unsupported key type")
     numbers = public_key.public_numbers()
+
     # JWK format requires base64url encoding without padding
     def b64url_encode(data: bytes) -> str:
         return base64.urlsafe_b64encode(data).decode().rstrip("=")
+
     n = b64url_encode(numbers.n.to_bytes((numbers.n.bit_length() + 7) // 8, "big"))
     e = b64url_encode(numbers.e.to_bytes((numbers.e.bit_length() + 7) // 8, "big"))
     return {
@@ -765,10 +997,10 @@ def accept_invitation_endpoint(
             row = cursor.fetchone()
     user_email = row[0] if row else None
     with get_connection() as connection:
-        invitation_id, tenant_id, role = accept_invitation(connection, request.token, user_id, user_email)
-    return InvitationAcceptResponse(
-        invitation_id=invitation_id, tenant_id=tenant_id, role=role
-    )
+        invitation_id, tenant_id, role = accept_invitation(
+            connection, request.token, user_id, user_email
+        )
+    return InvitationAcceptResponse(invitation_id=invitation_id, tenant_id=tenant_id, role=role)
 
 
 class MemberResponse(BaseModel):
@@ -837,7 +1069,9 @@ def update_member_role(
     # Ensure we don't remove the last owner (advisory lock + check)
     with get_connection() as connection:
         with connection.transaction():
-            ensure_owner_remaining(tenant_id, exclude_user_id=user_id if request.role == "member" else None)
+            ensure_owner_remaining(
+                tenant_id, exclude_user_id=user_id if request.role == "member" else None
+            )
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
@@ -899,8 +1133,16 @@ def create_new_api_key(
 ) -> ApiKeyCreatedResponse:
     """Create an API key. The plaintext key is returned once and never again."""
     with get_connection() as connection:
-        key_id, key = create_api_key(connection, current_user[1], current_user[0], request.name)
-    return ApiKeyCreatedResponse(key_id=key_id, name=request.name, key=key, key_prefix=key[:12])
+        key_id, key = create_api_key(
+            connection, current_user[1], current_user[0], request.name, scopes=request.scopes
+        )
+    return ApiKeyCreatedResponse(
+        key_id=key_id,
+        name=request.name,
+        key=key,
+        key_prefix=key[:12],
+        scopes=request.scopes or ["*"],
+    )
 
 
 @router.get("/api-keys", response_model=list[ApiKeyListedResponse])
@@ -917,6 +1159,7 @@ def api_keys(
             created_at=row.created_at,
             last_used_at=row.last_used_at,
             revoked=row.revoked,
+            scopes=getattr(row, "scopes", ["*"]),
         )
         for row in rows
     ]
@@ -967,9 +1210,12 @@ def _build_redis_client() -> object | None:
         return None
     try:
         import redis  # type: ignore[import-not-found]
+
         return redis.Redis.from_url(settings.redis_url, decode_responses=True)
     except ImportError:
-        logger.warning("REDIS_URL configured but redis package unavailable; using per-process breakers")
+        logger.warning(
+            "REDIS_URL configured but redis package unavailable; using per-process breakers"
+        )
         return None
 
 
@@ -1128,12 +1374,12 @@ def _ingest_upload(
     content: bytes,
     filename: str,
     content_type: str | None,
-    current_user: tuple[UUID, UUID],
+    current_user: tuple[UUID, UUID] | tuple[UUID, UUID, str, bool],
     settings: Settings,
 ) -> DocumentUploadResponse:
     """Shared ingestion core for single and batch uploads (rate limiting is the caller's)."""
     document_hash = content_hash(content)
-    _, tenant_id = current_user
+    tenant_id = current_user[1]
     with get_connection() as connection:
         if count_documents(connection, tenant_id) >= settings.max_documents_per_tenant:
             raise HTTPException(status_code=402, detail="Document quota exceeded")
@@ -1164,8 +1410,10 @@ def _ingest_upload(
             )
         # Defense-in-depth: verify file content matches extension via magic bytes
         detected = _detect_file_type(content, filename)
-        if detected is not None and detected != doc_type and not (
-            doc_type in {"pptx", "docx"} and detected in {"pptx", "docx"}
+        if (
+            detected is not None
+            and detected != doc_type
+            and not (doc_type in {"pptx", "docx"} and detected in {"pptx", "docx"})
         ):
             raise HTTPException(
                 status_code=415,
@@ -1250,14 +1498,18 @@ def _ingest_upload(
             # Cached: identical chunk text (a re-upload, or the same content
             # under a new version) skips the embedding call entirely.
             try:
-                embeddings = gemini_breaker().call(
-                    lambda: embed_texts_cached(
-                        connection,
-                        client,
-                        [chunk.text for chunk in chunks],
-                        model=settings.gemini_embedding_model,
+                embeddings = (
+                    gemini_breaker()
+                    .call(
+                        lambda: embed_texts_cached(
+                            connection,
+                            client,
+                            [chunk.text for chunk in chunks],
+                            model=settings.gemini_embedding_model,
+                        )
                     )
-                ).vectors
+                    .vectors
+                )
             except CircuitOpenError as exc:
                 _raise_provider_unavailable(exc)
             existing = find_document_by_hash(connection, document_hash, tenant_id)
@@ -1292,11 +1544,11 @@ def _ingest_upload(
 def upload_document(
     request: Request,
     file: Annotated[UploadFile, File(...)],
-    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("write:documents")),
 ) -> DocumentUploadResponse:
     settings = get_settings()
     content = _read_upload(file.file, request, max_bytes=settings.max_upload_bytes)
-    _, tenant_id = current_user
+    tenant_id = current_user[1]
     limiter.check(tenant_id, "documents", settings.document_rate_limit_per_minute)
     return _ingest_upload(
         content, file.filename or "upload", file.content_type, current_user, settings
@@ -1306,7 +1558,7 @@ def upload_document(
 @router.post("/documents/batch", response_model=list[BatchUploadResponse])
 def upload_documents_batch(
     files: Annotated[list[UploadFile], File(...)],
-    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("write:documents")),
 ) -> list[BatchUploadResponse]:
     """Process each file independently so one corrupt document cannot abort the batch."""
     settings = get_settings()
@@ -1348,7 +1600,7 @@ def upload_documents_batch(
 def documents(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
-    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("read:documents")),
 ) -> DocumentListResponse:
     with get_connection() as connection:
         rows = list_documents(connection, current_user[1], limit=limit, offset=offset)
@@ -1385,7 +1637,7 @@ def failed_ingestions(
 @router.get("/documents/{document_id}", response_model=DocumentDetailResponse)
 def document_detail(
     document_id: UUID,
-    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("read:documents")),
 ) -> DocumentDetailResponse:
     with get_connection() as connection:
         detail = get_document_detail(connection, document_id, current_user[1])
@@ -1408,7 +1660,7 @@ def document_chunks(
     document_id: UUID,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
-    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("read:documents")),
 ) -> ChunkPreviewResponse:
     """Preview what was indexed for a document, chunk by chunk (F3)."""
     with get_connection() as connection:
@@ -1419,10 +1671,439 @@ def document_chunks(
         raise HTTPException(status_code=404, detail="Document not found")
     return ChunkPreviewResponse(
         chunks=[
-            ChunkPreviewItem(page=row.page, section=row.section, text=row.text) for row in rows
+            ChunkPreviewItem(
+                page=row.page,
+                section=row.section,
+                text=row.text,
+            )
+            for row in rows
         ],
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get(
+    "/documents/{document_id}/pages/{page_number}/highlights",
+    response_model=list[CitationHighlight],
+)
+def get_page_highlights(
+    document_id: UUID,
+    page_number: int,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> list[CitationHighlight]:
+    """Return all bounding-box highlight geometries for a given document page."""
+    with get_connection() as connection:
+        info = get_document_detail(connection, document_id, current_user[1])
+        if info is None:
+            raise HTTPException(status_code=404, detail="Document not found")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT bounding_boxes FROM chunks
+                WHERE document_id = %s AND page = %s
+                """,
+                (document_id, page_number),
+            )
+            rows = cursor.fetchall()
+    highlights: list[CitationHighlight] = []
+    for (boxes_raw,) in rows:
+        if isinstance(boxes_raw, list):
+            for b in boxes_raw:
+                if isinstance(b, dict) and "box" in b:
+                    highlights.append(
+                        CitationHighlight(
+                            page=b.get("page", page_number),
+                            box=b.get("box", [0.0, 0.0, 1.0, 1.0]),
+                            text_snippet=b.get("text_snippet"),
+                        )
+                    )
+    return highlights
+
+
+@router.get("/documents/{document_id}/content", response_model=DocumentContentResponse)
+def document_content(
+    document_id: UUID,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> DocumentContentResponse:
+    """Retrieve structured content, page texts, chunks, offsets, and bounding boxes for document viewer."""
+    with get_connection() as connection:
+        data = get_document_content_and_chunks(connection, document_id, current_user[1])
+    if data is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    pages_dict: dict[int, list[str]] = {}
+    chunks_items: list[DocumentChunkItem] = []
+    for c in data.chunks:
+        pg = c["page"]
+        if pg not in pages_dict:
+            pages_dict[pg] = []
+        pages_dict[pg].append(c["text"])
+        chunks_items.append(
+            DocumentChunkItem(
+                chunk_id=c["id"],
+                page=c["page"],
+                section=c["section"],
+                text=c["text"],
+                start_char=c["start_char"],
+                end_char=c["end_char"],
+                bounding_boxes=c["bounding_boxes"],
+            )
+        )
+
+    pages: list[DocumentPageContent] = [
+        DocumentPageContent(page=pg, text="\n\n".join(texts))
+        for pg, texts in sorted(pages_dict.items())
+    ]
+    if not pages:
+        pages = [DocumentPageContent(page=1, text="")]
+
+    return DocumentContentResponse(
+        document_id=data.document_id,
+        title=data.title,
+        doc_type=data.doc_type,
+        storage_uri=data.storage_uri,
+        pages=pages,
+        chunks=chunks_items,
+    )
+
+
+def _render_document_viewer_html(
+    document_id: UUID,
+    title: str,
+    doc_type: str,
+    pages: list[tuple[int, str]],
+    chunks: list[dict[str, Any]],
+    active_page: int,
+    active_chunk_id: UUID | None,
+    highlight_text: str | None,
+    nonce: str = "",
+) -> str:
+    escaped_title = html.escape(title)
+    escaped_doc_type = html.escape(doc_type.upper())
+    nonce_attr = f' nonce="{nonce}"' if nonce else ""
+
+    # Build chunk sidebar items
+    chunk_items_html: list[str] = []
+    for idx, c in enumerate(chunks, 1):
+        is_active = active_chunk_id is not None and c["id"] == active_chunk_id
+        active_cls = " active" if is_active else ""
+        c_id = c["id"]
+        c_page = c["page"]
+        c_snippet = html.escape(c["text"][:90] + ("..." if len(c["text"]) > 90 else ""))
+        chunk_items_html.append(
+            f'<div class="chunk-card{active_cls}" data-href="?page={c_page}&chunk_id={c_id}">'
+            f'<div class="chunk-card-meta"><span>Chunk {idx}</span><span>Page {c_page}</span></div>'
+            f'<div class="chunk-card-text">{c_snippet}</div>'
+            f'</div>'
+        )
+
+    # Build page cards
+    page_cards_html: list[str] = []
+    for pg, text in pages:
+        escaped_text = html.escape(text)
+        # Apply highlight
+        has_highlight = False
+        if highlight_text and highlight_text.strip():
+            target = html.escape(highlight_text.strip())
+            if target.lower() in escaped_text.lower():
+                pattern = re.compile(re.escape(target), re.IGNORECASE)
+                escaped_text = pattern.sub(
+                    lambda m: f'<mark class="highlight-active" id="active-highlight">{m.group(0)}</mark>',
+                    escaped_text,
+                    count=1,
+                )
+                has_highlight = True
+
+        if not has_highlight and active_chunk_id:
+            for c in chunks:
+                if c["id"] == active_chunk_id and c["page"] == pg:
+                    chunk_esc = html.escape(c["text"].strip())
+                    if chunk_esc in escaped_text:
+                        escaped_text = escaped_text.replace(
+                            chunk_esc,
+                            f'<mark class="highlight-active" id="active-highlight">{chunk_esc}</mark>',
+                            1,
+                        )
+                        has_highlight = True
+                        break
+                    elif len(chunk_esc) > 40:
+                        sub_snippet = chunk_esc[:40]
+                        if sub_snippet in escaped_text:
+                            escaped_text = escaped_text.replace(
+                                sub_snippet,
+                                f'<mark class="highlight-active" id="active-highlight">{sub_snippet}</mark>',
+                                1,
+                            )
+                            has_highlight = True
+                            break
+
+        # Render bounding boxes if any for active chunk on this page
+        overlay_html = ""
+        if active_chunk_id:
+            for c in chunks:
+                if c["id"] == active_chunk_id and c["page"] == pg and c.get("bounding_boxes"):
+                    boxes_rendered = []
+                    for b in c["bounding_boxes"]:
+                        coords = b.get("box", [])
+                        if len(coords) == 4:
+                            x0, y0, x1, y1 = coords
+                            boxes_rendered.append(
+                                f'<div class="bbox-rect" style="left:{x0*100:.1f}%; top:{y0*100:.1f}%; width:{(x1-x0)*100:.1f}%; height:{(y1-y0)*100:.1f}%;"></div>'
+                            )
+                    if boxes_rendered:
+                        overlay_html = f'<div class="bbox-overlay">{"".join(boxes_rendered)}</div>'
+
+        page_cards_html.append(
+            f'<div class="page-card" id="page-{pg}">'
+            f'{overlay_html}'
+            f'<div class="page-header"><span>Page {pg}</span><span>{escaped_doc_type}</span></div>'
+            f'<div class="page-body">{escaped_text}</div>'
+            f'</div>'
+        )
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Source Viewer — {escaped_title}</title>
+<style>
+  :root {{
+    --bg-primary: #0f172a;
+    --bg-surface: #1e293b;
+    --bg-card: #334155;
+    --border: #475569;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent: #38bdf8;
+  }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-main);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }}
+  header {{
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    z-index: 10;
+  }}
+  .doc-title {{ font-size: 1.1rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+  .badge {{ background: #0284c7; color: #fff; font-size: 0.75rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; margin-left: 8px; }}
+  .viewer-layout {{ flex: 1; display: flex; overflow: hidden; }}
+  .sidebar {{
+    width: 320px;
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 16px;
+    gap: 12px;
+  }}
+  .sidebar-header {{ font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 700; }}
+  .chunk-card {{
+    background: var(--bg-card);
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }}
+  .chunk-card:hover {{ border-color: var(--accent); }}
+  .chunk-card.active {{ border-color: var(--accent); background: rgba(56, 189, 248, 0.15); }}
+  .chunk-card-meta {{ display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--accent); margin-bottom: 4px; font-weight: 600; }}
+  .chunk-card-text {{ font-size: 0.82rem; color: var(--text-muted); line-height: 1.4; }}
+  .page-viewport {{
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+  }}
+  .page-card {{
+    position: relative;
+    background: #ffffff;
+    color: #0f172a;
+    width: 100%;
+    max-width: 840px;
+    min-height: 480px;
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    padding: 40px;
+  }}
+  .page-header {{
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #64748b;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 8px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+  }}
+  .page-body {{
+    font-size: 0.95rem;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }}
+  mark.highlight-active {{
+    background: #fef08a;
+    color: #854d0e;
+    padding: 2px 4px;
+    border-radius: 3px;
+    animation: highlight-pulse 2s infinite alternate;
+  }}
+  @keyframes highlight-pulse {{
+    0% {{ background: #fef08a; box-shadow: 0 0 0 rgba(234, 179, 8, 0); }}
+    100% {{ background: #fde047; box-shadow: 0 0 14px rgba(234, 179, 8, 0.7); }}
+  }}
+  .bbox-overlay {{
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+  }}
+  .bbox-rect {{
+    position: absolute;
+    border: 2px solid #ef4444;
+    background: rgba(239, 68, 68, 0.15);
+    border-radius: 2px;
+  }}
+</style>
+</head>
+<body>
+  <header>
+    <div class="doc-title">{escaped_title} <span class="badge">{escaped_doc_type}</span></div>
+    <div><a href="/documents/{document_id}" style="color: var(--accent); font-size: 0.85rem; text-decoration: none;">View Details &rarr;</a></div>
+  </header>
+  <div class="viewer-layout">
+    <aside class="sidebar">
+      <div class="sidebar-header">Passages ({len(chunks)})</div>
+      {"".join(chunk_items_html)}
+    </aside>
+    <main class="page-viewport">
+      {"".join(page_cards_html)}
+    </main>
+  </div>
+  <script{nonce_attr}>
+    window.addEventListener('DOMContentLoaded', () => {{
+      const target = document.getElementById('active-highlight') || document.getElementById('page-{active_page}');
+      if (target) {{
+        target.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+      }}
+      document.querySelectorAll('.chunk-card[data-href]').forEach(card => {{
+        card.addEventListener('click', () => {{
+          const href = card.getAttribute('data-href');
+          if (href) location.href = href;
+        }});
+      }});
+    }});
+  </script>
+</body>
+</html>"""
+
+
+@router.get("/documents/{document_id}/view", response_class=HTMLResponse)
+def document_viewer(
+    document_id: UUID,
+    page: Annotated[int, Query(ge=1)] = 1,
+    chunk_id: UUID | None = None,
+    highlight: Annotated[str | None, Query(max_length=500)] = None,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> HTMLResponse:
+    """Interactive document viewer with bounding box overlays and text passage highlighting."""
+    with get_connection() as connection:
+        data = get_document_content_and_chunks(connection, document_id, current_user[1])
+    if data is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    pages_dict: dict[int, list[str]] = {}
+    for c in data.chunks:
+        pg = c["page"]
+        if pg not in pages_dict:
+            pages_dict[pg] = []
+        pages_dict[pg].append(c["text"])
+
+    pages_list = [
+        (pg, "\n\n".join(texts))
+        for pg, texts in sorted(pages_dict.items())
+    ]
+    if not pages_list:
+        pages_list = [(1, "")]
+
+    nonce = secrets.token_urlsafe(16)
+    html_content = _render_document_viewer_html(
+        document_id=data.document_id,
+        title=data.title,
+        doc_type=data.doc_type,
+        pages=pages_list,
+        chunks=data.chunks,
+        active_page=page,
+        active_chunk_id=chunk_id,
+        highlight_text=highlight,
+        nonce=nonce,
+    )
+    csp = (
+        f"default-src 'self'; script-src 'self' 'nonce-{nonce}'; "
+        f"style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
+    )
+    return HTMLResponse(content=html_content, headers={"Content-Security-Policy": csp})
+
+
+@router.post("/documents/diff", response_model=DocumentDiffResponse)
+def diff_documents(
+    request: DocumentDiffRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> DocumentDiffResponse:
+    """Perform semantic clause alignment, redline delta analysis, and risk scoring between two documents (Feature 7)."""
+    with get_connection() as connection:
+        doc_a = get_document_detail(connection, request.source_doc_id, current_user[1])
+        if doc_a is None:
+            raise HTTPException(status_code=404, detail="Source document not found")
+        doc_b = get_document_detail(connection, request.target_doc_id, current_user[1])
+        if doc_b is None:
+            raise HTTPException(status_code=404, detail="Target document not found")
+
+        diff_res = diff_documents_from_db(
+            connection,
+            tenant_id=current_user[1],
+            source_doc_id=request.source_doc_id,
+            target_doc_id=request.target_doc_id,
+        )
+
+    return DocumentDiffResponse(
+        source_doc_id=diff_res.source_doc_id,
+        target_doc_id=diff_res.target_doc_id,
+        overall_risk_score=diff_res.overall_risk_score,
+        added_count=diff_res.added_count,
+        removed_count=diff_res.removed_count,
+        modified_count=diff_res.modified_count,
+        clauses=[
+            ClauseDiffResponse(
+                section_name=c.section_name,
+                change_type=c.change_type.value,
+                risk_severity=c.risk_severity.value,
+                source_clause=c.source_clause,
+                target_clause=c.target_clause,
+                similarity=c.similarity,
+                delta_summary=c.delta_summary,
+            )
+            for c in diff_res.clauses
+        ],
+        executive_summary=diff_res.executive_summary,
     )
 
 
@@ -1455,9 +2136,7 @@ def reingest_document(
         raise HTTPException(status_code=404, detail="Document not found")
     status_value, storage_uri, document_hash = info
     if storage_uri is None:
-        raise HTTPException(
-            status_code=409, detail="Document has no stored original to re-ingest"
-        )
+        raise HTTPException(status_code=409, detail="Document has no stored original to re-ingest")
     if status_value not in {"ready", "failed"}:
         raise HTTPException(
             status_code=409,
@@ -1512,6 +2191,41 @@ def document_extraction(
     return _extraction_response(row)
 
 
+@router.post("/extractions/filter", response_model=NaturalFilterResponse)
+def filter_extractions_natural(
+    request: NaturalFilterRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> NaturalFilterResponse:
+    """Filter extractions using a natural-language query translated to allowlisted field constraints."""
+    parsed = parse_natural_filter(request.query)
+    if parsed.confidence == FilterConfidence.AMBIGUOUS:
+        return NaturalFilterResponse(
+            extractions=[],
+            limit=request.limit,
+            offset=request.offset,
+            clarification_needed=parsed.clarification_needed,
+            applied_filters={},
+        )
+    with get_connection() as connection:
+        rows = list_extractions_with_ranges(
+            connection,
+            current_user[1],
+            schema_type=parsed.schema_type,
+            field_filters=parsed.field_filters,
+            numeric_ranges=parsed.numeric_ranges,
+            date_ranges=parsed.date_ranges,
+            limit=request.limit,
+            offset=request.offset,
+        )
+    return NaturalFilterResponse(
+        extractions=[_extraction_response(row) for row in rows],
+        limit=request.limit,
+        offset=request.offset,
+        clarification_needed=None,
+        applied_filters=parsed.applied_filters_summary,
+    )
+
+
 @router.get("/extractions", response_model=ExtractionListResponse)
 def extractions(
     schema_type: Annotated[str | None, Query(max_length=40)] = None,
@@ -1520,6 +2234,7 @@ def extractions(
     currency: Annotated[str | None, Query(max_length=8)] = None,
     counterparty: Annotated[str | None, Query(max_length=300)] = None,
     governing_law: Annotated[str | None, Query(max_length=100)] = None,
+    natural_query: Annotated[str | None, Query(max_length=500)] = None,
     needs_review: bool | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -1537,16 +2252,43 @@ def extractions(
         }.items()
         if value is not None
     }
+    numeric_ranges = None
+    date_ranges = None
+    if natural_query:
+        parsed = parse_natural_filter(natural_query)
+        if parsed.confidence == FilterConfidence.AMBIGUOUS:
+            return ExtractionListResponse(extractions=[], limit=limit, offset=offset)
+        if parsed.schema_type and not schema_type:
+            schema_type = parsed.schema_type
+        for k, v in parsed.field_filters.items():
+            if k not in field_filters:
+                field_filters[k] = v
+        numeric_ranges = parsed.numeric_ranges
+        date_ranges = parsed.date_ranges
+
     with get_connection() as connection:
-        rows = list_extractions(
-            connection,
-            current_user[1],
-            schema_type=schema_type,
-            field_filters=field_filters,
-            needs_review=needs_review,
-            limit=limit,
-            offset=offset,
-        )
+        if numeric_ranges or date_ranges:
+            rows = list_extractions_with_ranges(
+                connection,
+                current_user[1],
+                schema_type=schema_type,
+                field_filters=field_filters,
+                numeric_ranges=numeric_ranges,
+                date_ranges=date_ranges,
+                needs_review=needs_review,
+                limit=limit,
+                offset=offset,
+            )
+        else:
+            rows = list_extractions(
+                connection,
+                current_user[1],
+                schema_type=schema_type,
+                field_filters=field_filters,
+                needs_review=needs_review,
+                limit=limit,
+                offset=offset,
+            )
     return ExtractionListResponse(
         extractions=[_extraction_response(row) for row in rows],
         limit=limit,
@@ -1616,7 +2358,9 @@ def extraction_review_queue(
             )
 
 
-@router.post("/documents/{document_id}/extraction/correct", response_model=ExtractionCorrectionResponse)
+@router.post(
+    "/documents/{document_id}/extraction/correct", response_model=ExtractionCorrectionResponse
+)
 def correct_extraction_endpoint(
     document_id: UUID,
     body: ExtractionCorrectionRequest,
@@ -1675,6 +2419,385 @@ def admin_correct_extraction_endpoint(
         status="corrected",
         message="Extraction successfully corrected by platform admin",
     )
+
+
+@router.post(
+    "/admin/schemas",
+    response_model=DynamicSchemaResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_scope("admin:schemas"))],
+)
+def create_schema(
+    request: DynamicSchemaCreateRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> DynamicSchemaResponse:
+    """Create or update a dynamic structured extraction schema for the tenant (Feature 3)."""
+    with get_connection() as connection:
+        row = create_tenant_schema(
+            connection,
+            tenant_id=current_user[1],
+            schema_name=request.schema_name,
+            json_schema=request.json_schema,
+            description=request.description,
+            field_descriptions=request.field_descriptions,
+            version=request.version,
+        )
+    return DynamicSchemaResponse(
+        id=row.id,
+        schema_name=row.schema_name,
+        schema_version=row.schema_version,
+        description=row.description,
+        json_schema=row.json_schema,
+        field_descriptions=row.field_descriptions,
+        created_at=row.created_at.isoformat(),
+    )
+
+
+@router.get(
+    "/admin/schemas",
+    response_model=list[DynamicSchemaResponse],
+    dependencies=[Depends(require_scope("admin:schemas"))],
+)
+def list_schemas(
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> list[DynamicSchemaResponse]:
+    """List all active extraction schemas configured for the tenant (Feature 3)."""
+    with get_connection() as connection:
+        rows = list_tenant_schemas(connection, current_user[1])
+    return [
+        DynamicSchemaResponse(
+            id=row.id,
+            schema_name=row.schema_name,
+            schema_version=row.schema_version,
+            description=row.description,
+            json_schema=row.json_schema,
+            field_descriptions=row.field_descriptions,
+            created_at=row.created_at.isoformat(),
+        )
+        for row in rows
+    ]
+
+
+@router.get(
+    "/admin/schemas/{schema_name}",
+    response_model=DynamicSchemaResponse,
+    dependencies=[Depends(require_scope("admin:schemas"))],
+)
+def get_schema(
+    schema_name: str,
+    version: int | None = None,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> DynamicSchemaResponse:
+    """Get detail for a specific extraction schema (Feature 3)."""
+    with get_connection() as connection:
+        row = get_tenant_schema(connection, current_user[1], schema_name, version=version)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Schema not found")
+    return DynamicSchemaResponse(
+        id=row.id,
+        schema_name=row.schema_name,
+        schema_version=row.schema_version,
+        description=row.description,
+        json_schema=row.json_schema,
+        field_descriptions=row.field_descriptions,
+        created_at=row.created_at.isoformat(),
+    )
+
+
+@router.post(
+    "/admin/schemas/infer",
+    response_model=InferSchemaResponse,
+    dependencies=[Depends(require_scope("admin:schemas"))],
+)
+def infer_schema(
+    request: InferSchemaRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> InferSchemaResponse:
+    """Infer a candidate extraction schema from sample document text (Feature 3)."""
+    settings = get_settings()
+    limiter.check(current_user[1], "schemas_infer", settings.schema_rate_limit_per_minute)
+    schema = infer_schema_from_sample(request.sample_text, default_name=request.schema_name)
+    return InferSchemaResponse(schema_name=request.schema_name, json_schema=schema)
+
+
+@router.post("/graph/query", response_model=GraphQueryResponse)
+def query_graph(
+    request: GraphQueryRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> GraphQueryResponse:
+    """Traverse multi-hop relationships starting from seed entities (Feature 6: GraphRAG)."""
+    with get_connection() as connection:
+        paths = traverse_entity_neighborhood(
+            connection,
+            tenant_id=current_user[1],
+            seed_entity_names=request.seed_entities,
+            max_depth=request.max_depth,
+            limit=request.limit,
+        )
+    return GraphQueryResponse(
+        paths=[
+            GraphPathResponse(
+                source_name=p.source_name,
+                relation_type=p.relation_type,
+                target_name=p.target_name,
+                depth=p.depth,
+            )
+            for p in paths
+        ]
+    )
+
+
+@router.get("/admin/conflicts", response_model=list[ConflictResponse])
+def get_conflicts(
+    status_filter: str = "unresolved",
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> list[ConflictResponse]:
+    """List detected cross-document knowledge conflicts and policy contradictions (Feature 8)."""
+    with get_connection() as connection:
+        rows = list_conflicts(connection, current_user[1], status=status_filter, limit=limit)
+    return [
+        ConflictResponse(
+            id=r.id,
+            doc_a_id=r.doc_a_id,
+            doc_b_id=r.doc_b_id,
+            conflict_category=r.conflict_category,
+            description=r.description,
+            severity=r.severity,
+            status=r.status,
+            created_at=r.created_at.isoformat(),
+        )
+        for r in rows
+    ]
+
+
+@router.post("/admin/conflicts/{conflict_id}/resolve")
+def resolve_conflict_endpoint(
+    conflict_id: UUID,
+    request: ConflictResolveRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> dict[str, str]:
+    """Resolve or dismiss a detected knowledge conflict (Feature 8)."""
+    with get_connection() as connection:
+        success = resolve_conflict(
+            connection,
+            conflict_id=conflict_id,
+            tenant_id=current_user[1],
+            user_id=current_user[0],
+            status=request.status,
+        )
+    if not success:
+        raise HTTPException(status_code=404, detail="Conflict not found")
+    return {"status": request.status, "message": "Conflict status updated successfully"}
+
+
+@router.post("/research/jobs", response_model=ResearchJobResponse)
+def create_research_job_endpoint(
+    request: ResearchJobCreateRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> ResearchJobResponse:
+    """Execute autonomous agentic multi-round research across corpus (Feature 9)."""
+    settings = get_settings()
+    limiter.check(current_user[1], "research", settings.research_rate_limit_per_minute)
+
+    # Token budget reservation scaling with max_iterations
+    token_budget = get_token_budget()
+    platform_budget = get_platform_token_budget()
+    reserved = False
+    platform_reserved = False
+    estimated = estimate_research_token_cost(request.brief, request.max_iterations)
+
+    if token_budget is not None:
+        token_limit, _, tier, _ = get_tenant_budget_limits(current_user[1])
+        allowed, current_usage, _ = token_budget.check_and_reserve(
+            str(current_user[1]), estimated, limit=token_limit
+        )
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Daily token budget exceeded: {current_usage}/{token_limit}",
+            )
+        reserved = True
+
+    if platform_budget is not None:
+        allowed, current_usage, _ = platform_budget.check_and_reserve("platform", estimated)
+        if not allowed:
+            if token_budget is not None and reserved:
+                token_budget.release_reservation(str(current_user[1]), estimated)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Platform daily token budget exceeded: {current_usage}/{settings.platform_daily_token_budget}",
+            )
+        platform_reserved = True
+
+    try:
+        planner = DeepResearchPlanner()
+        with get_connection() as connection:
+            dossier = planner.run_research(
+                tenant_id=current_user[1],
+                brief=request.brief,
+                conn=connection,
+                max_iterations=request.max_iterations,
+            )
+
+        # Reconcile actual consumption
+        summary_len = len(dossier.executive_summary) + sum(len(f) for f in dossier.key_findings)
+        sources_len = sum(len(s) for s in dossier.sources)
+        actual_cost = max(100, (len(request.brief) + sources_len + summary_len) // 4)
+
+        if token_budget is not None and reserved:
+            token_budget.reconcile(str(current_user[1]), actual_cost)
+        if platform_budget is not None and platform_reserved:
+            platform_budget.reconcile("platform", actual_cost)
+    except Exception:
+        if token_budget is not None and reserved:
+            token_budget.release_reservation(str(current_user[1]), estimated)
+        if platform_budget is not None and platform_reserved:
+            platform_budget.release_reservation("platform", estimated)
+        raise
+    return ResearchJobResponse(
+        id=UUID(dossier.job_id),
+        tenant_id=UUID(dossier.tenant_id),
+        query=dossier.brief,
+        status=dossier.status,
+        plan=[
+            {
+                "id": g.id,
+                "description": g.description,
+                "strategy": g.strategy,
+                "status": g.status,
+                "findings": g.findings,
+            }
+            for g in dossier.plan
+        ],
+        steps=[
+            {
+                "step_number": s.step_number,
+                "sub_goal_id": s.sub_goal_id,
+                "action": s.action,
+                "query": s.query,
+                "evidence_collected": s.evidence_collected,
+            }
+            for s in dossier.steps
+        ],
+        sources=dossier.sources,
+        final_report=dossier.executive_summary,
+        completeness_score=dossier.completeness_score,
+    )
+
+
+@router.get("/research/jobs", response_model=list[ResearchJobListItem])
+def list_research_jobs_endpoint(
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> list[ResearchJobListItem]:
+    """List recent research jobs for current tenant (Feature 9)."""
+    with get_connection() as connection:
+        rows = list_research_jobs(connection, current_user[1], limit=limit)
+    return [
+        ResearchJobListItem(
+            id=UUID(r["id"]),
+            tenant_id=UUID(r["tenant_id"]),
+            query=r["query"],
+            status=r["status"],
+            created_at=r["created_at"],
+            completed_at=r["completed_at"],
+        )
+        for r in rows
+    ]
+
+
+@router.get("/research/jobs/{job_id}", response_model=ResearchJobResponse)
+def get_research_job_endpoint(
+    job_id: UUID,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> ResearchJobResponse:
+    """Get research dossier and execution history for a job (Feature 9)."""
+    with get_connection() as connection:
+        row = get_research_job(connection, current_user[1], job_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Research job not found")
+    return ResearchJobResponse(
+        id=UUID(row["id"]),
+        tenant_id=UUID(row["tenant_id"]),
+        query=row["query"],
+        status=row["status"],
+        plan=row.get("plan", []) or [],
+        steps=row.get("steps", []) or [],
+        sources=row.get("sources", []) or [],
+        final_report=row.get("final_report"),
+        created_at=row.get("created_at"),
+        completed_at=row.get("completed_at"),
+    )
+
+
+@router.post("/privacy/mask", response_model=MaskTextResponse)
+def mask_text_endpoint(
+    request: MaskTextRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> MaskTextResponse:
+    """Detect and replace PII/PHI with deterministic surrogate tokens (Feature 10: Privacy Vault)."""
+    vault = PrivacyVault()
+    with get_connection() as connection:
+        masked_text, token_map = vault.mask_text(
+            text=request.text,
+            tenant_id=current_user[1],
+            conn=connection,
+            store=request.store_in_vault,
+        )
+    entity_types = list(set(t.split("_")[0].strip("[]") for t in token_map.keys()))
+    return MaskTextResponse(
+        masked_text=masked_text,
+        tokens_count=len(token_map),
+        entity_types=entity_types,
+    )
+
+
+@router.post("/privacy/unmask", response_model=UnmaskTextResponse)
+def unmask_text_endpoint(
+    request: UnmaskTextRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> UnmaskTextResponse:
+    """Re-hydrate surrogate tokens back into original plaintext values (Feature 10: Privacy Vault)."""
+    vault = PrivacyVault()
+    surrogate_tokens = sorted(set(re.findall(r"\[[A-Z]+_[a-f0-9]{8}\]", request.masked_text)))
+    with get_connection() as connection:
+        unmasked = vault.unmask_text(
+            text=request.masked_text,
+            tenant_id=current_user[1],
+            conn=connection,
+        )
+        record_audit_log(
+            connection,
+            tenant_id=current_user[1],
+            user_id=current_user[0],
+            action="privacy.unmask",
+            details={
+                "surrogate_tokens": surrogate_tokens,
+                "tokens_count": len(surrogate_tokens),
+            },
+        )
+    return UnmaskTextResponse(unmasked_text=unmasked)
+
+
+@router.get("/privacy/vault", response_model=list[VaultEntryResponse])
+def list_vault_endpoint(
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> list[VaultEntryResponse]:
+    """Audit pseudonym tokens and classified sensitive entity types (Feature 10: Privacy Vault)."""
+    vault = PrivacyVault()
+    with get_connection() as connection:
+        records = vault.list_vault_records(connection, current_user[1], limit=limit)
+    return [
+        VaultEntryResponse(
+            id=r["id"],
+            surrogate_token=r["surrogate_token"],
+            entity_type=r["entity_type"],
+            created_at=r["created_at"],
+        )
+        for r in records
+    ]
 
 
 @router.get("/admin/dlq", response_model=AdminDLQResponse)
@@ -1854,26 +2977,54 @@ class AskContext:
 
 
 def _prepare_ask(
-    request: AskRequest, current_user: tuple[UUID, UUID], settings: Settings
+    request: AskRequest,
+    current_user: tuple[UUID, UUID] | tuple[UUID, UUID, str, bool],
+    settings: Settings,
 ) -> AskContext:
     """Load history, rewrite follow-ups, embed, and retrieve — shared by /ask and /ask/stream."""
-    _, tenant_id = current_user
+    tenant_id = current_user[1]
     history: list[tuple[str, str]] = []
     if request.conversation_id is not None:
         with get_connection() as connection:
-            messages = get_conversation_messages(
-                connection, request.conversation_id, tenant_id
-            )
+            messages = get_conversation_messages(connection, request.conversation_id, tenant_id)
         if messages is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
         history = [
             (message.role, message.content)
             for message in messages[-settings.conversation_history_turns :]
         ]
+    target_document_ids: list[UUID] | None = None
+    if request.document_ids is not None:
+        if not request.document_ids:
+            return AskContext(
+                question=request.question,
+                standalone_question=request.question,
+                conversation_id=request.conversation_id,
+                retrieved=[],
+                labeled_chunks=[],
+                document_numbers={},
+                labeled_extractions=[],
+                embed_input_tokens=0,
+            )
+        target_document_ids = list(request.document_ids)
+        if request.document_id is not None:
+            if request.document_id in target_document_ids:
+                target_document_ids = [request.document_id]
+            else:
+                return AskContext(
+                    question=request.question,
+                    standalone_question=request.question,
+                    conversation_id=request.conversation_id,
+                    retrieved=[],
+                    labeled_chunks=[],
+                    document_numbers={},
+                    labeled_extractions=[],
+                    embed_input_tokens=0,
+                )
+
     # Structured-filter pre-step: resolve matched documents BEFORE embedding so
     # an empty match short-circuits to a grounded refusal without a paid call
     # — and never silently reverts to an unfiltered tenant search.
-    structured_document_ids: list[UUID] | None = None
     if request.structured_filters is not None:
         with get_connection() as connection:
             structured_document_ids = find_document_ids_by_fields(
@@ -1893,6 +3044,23 @@ def _prepare_ask(
                 labeled_extractions=[],
                 embed_input_tokens=0,
             )
+        if target_document_ids is not None:
+            target_document_ids = [
+                did for did in target_document_ids if did in set(structured_document_ids)
+            ]
+            if not target_document_ids:
+                return AskContext(
+                    question=request.question,
+                    standalone_question=request.question,
+                    conversation_id=request.conversation_id,
+                    retrieved=[],
+                    labeled_chunks=[],
+                    document_numbers={},
+                    labeled_extractions=[],
+                    embed_input_tokens=0,
+                )
+        else:
+            target_document_ids = structured_document_ids
     standalone_question = request.question
     # Local mode (LOCAL_GENERATION=true) skips the rewrite call; retrieval just
     # uses the raw question.
@@ -1910,7 +3078,9 @@ def _prepare_ask(
         except Exception:
             # Rewrite failed (provider error, timeout, etc.) — degrade to raw
             # question rather than failing the ask. The rewrite is best-effort.
-            logger.warning("Follow-up rewrite failed; retrieving with the raw question", exc_info=True)
+            logger.warning(
+                "Follow-up rewrite failed; retrieving with the raw question", exc_info=True
+            )
             standalone_question = request.question
     if settings.local_embeddings:
         # Same deterministic vectors the worker embeds with in local mode.
@@ -1929,15 +3099,18 @@ def _prepare_ask(
             embed_input_tokens = embed_result.input_tokens
         except CircuitOpenError as exc:
             _raise_provider_unavailable(exc)
+    retrieve_limit = 5
+    if target_document_ids and len(target_document_ids) > 1:
+        retrieve_limit = max(5, min(20, len(target_document_ids) * 3))
     with get_connection() as connection:
         retrieved = retrieve_chunks(
             connection,
             query_embedding,
             tenant_id=tenant_id,
             question=standalone_question,
-            limit=5,
-            document_id=request.document_id,
-            document_ids=structured_document_ids,
+            limit=retrieve_limit,
+            document_id=request.document_id if target_document_ids is None else None,
+            document_ids=target_document_ids,
             doc_type=request.doc_type,
             filename=request.filename,
             created_after=request.created_after,
@@ -1957,7 +3130,7 @@ def _prepare_ask(
     # same document numbering, so [doc N, extracted fields] citations resolve
     # against the retrieved set exactly like page citations.
     labeled_extractions: list[LabeledExtraction] = []
-    if request.structured_filters is not None and document_numbers:
+    if (request.structured_filters is not None or (target_document_ids and len(target_document_ids) > 1)) and document_numbers:
         with get_connection() as connection:
             for document_id, number in document_numbers.items():
                 row = get_document_extraction(connection, document_id, tenant_id)
@@ -1978,21 +3151,38 @@ def _prepare_ask(
 
 
 def _citations_for(
-    parsed: list[Citation], document_numbers: dict[UUID, int]
+    parsed: list[Citation],
+    document_numbers: dict[UUID, int],
+    retrieved: list[tuple[UUID, UUID, TextChunk]] | None = None,
 ) -> list[CitationResponse]:
     documents_by_number = {number: document_id for document_id, number in document_numbers.items()}
-    return [
-        CitationResponse(
-            document_id=documents_by_number[citation.document_index], page=citation.page
+    results: list[CitationResponse] = []
+    for citation in parsed:
+        if citation.document_index not in documents_by_number:
+            continue
+        doc_id = documents_by_number[citation.document_index]
+        highlights: list[CitationHighlight] = []
+        if retrieved:
+            for _, r_doc_id, chunk in retrieved:
+                if r_doc_id == doc_id and (citation.page is None or chunk.page == citation.page):
+                    for box_item in chunk.bounding_boxes:
+                        if isinstance(box_item, dict) and "box" in box_item:
+                            highlights.append(
+                                CitationHighlight(
+                                    page=box_item.get("page", chunk.page),
+                                    box=box_item.get("box", [0.0, 0.0, 1.0, 1.0]),
+                                    text_snippet=box_item.get("text_snippet"),
+                                )
+                            )
+        results.append(
+            CitationResponse(document_id=doc_id, page=citation.page, highlights=highlights)
         )
-        for citation in parsed
-        if citation.document_index in documents_by_number
-    ]
+    return results
 
 
 def _record_ask(
     http_request: Request,
-    current_user: tuple[UUID, UUID],
+    current_user: tuple[UUID, UUID] | tuple[UUID, UUID, str, bool],
     context: AskContext,
     *,
     input_tokens: int,
@@ -2020,13 +3210,24 @@ def _record_ask(
                 cost_estimate=cost,
             )
             if context.conversation_id is not None:
+                c_payload = []
+                for citation in citations:
+                    c_dict: dict[str, Any] = {
+                        "document_id": str(citation.document_id),
+                        "page": citation.page,
+                    }
+                    if citation.highlights:
+                        c_dict["highlights"] = [
+                            h.model_dump(mode="json") for h in citation.highlights
+                        ]
+                    c_payload.append(c_dict)
                 append_exchange(
                     connection,
                     context.conversation_id,
                     current_user[1],
                     question=context.question,
                     answer=answer,
-                    citations=[citation.model_dump(mode="json") for citation in citations],
+                    citations=c_payload,
                 )
     except Exception:
         # Telemetry and history persistence must never fail the answer itself.
@@ -2040,11 +3241,20 @@ def _sse_event(event: str, payload: dict[str, object]) -> str:
 def _ask_done_event(
     answer_text: str, citations: list[CitationResponse], conversation_id: UUID | None
 ) -> str:
+    c_payload = []
+    for citation in citations:
+        c_dict: dict[str, Any] = {
+            "document_id": str(citation.document_id),
+            "page": citation.page,
+        }
+        if citation.highlights:
+            c_dict["highlights"] = [h.model_dump(mode="json") for h in citation.highlights]
+        c_payload.append(c_dict)
     return _sse_event(
         "done",
         {
             "answer": answer_text,
-            "citations": [citation.model_dump(mode="json") for citation in citations],
+            "citations": c_payload,
             "conversation_id": str(conversation_id) if conversation_id is not None else None,
         },
     )
@@ -2060,7 +3270,7 @@ def _ask_sse_response(generator: Iterator[str]) -> StreamingResponse:
 
 def _local_ask_stream(
     http_request: Request,
-    current_user: tuple[UUID, UUID],
+    current_user: tuple[UUID, UUID] | tuple[UUID, UUID, str, bool],
     context: AskContext,
     settings: Settings,
     started: float,
@@ -2071,7 +3281,9 @@ def _local_ask_stream(
     )
     for word in answer_text.split(" "):
         yield _sse_event("token", {"text": f"{word} "})
-    citations = _citations_for(parse_citations(answer_text), context.document_numbers)
+    citations = _citations_for(
+        parse_citations(answer_text), context.document_numbers, context.retrieved
+    )
     _record_ask(
         http_request,
         current_user,
@@ -2090,7 +3302,7 @@ def _local_ask_stream(
 def ask(
     request: AskRequest,
     http_request: Request,
-    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("query:ask")),
 ) -> AskResponse:
     started = perf_counter()
     settings = get_settings()
@@ -2124,8 +3336,11 @@ def ask(
             if token_budget is not None and reserved:
                 token_budget.release_reservation(str(current_user[1]), estimated)
             import logging
+
             logging.getLogger("knowledgeforge.budget").warning(
-                "Platform daily token budget exceeded: %d/%d", current_usage, settings.platform_daily_token_budget
+                "Platform daily token budget exceeded: %d/%d",
+                current_usage,
+                settings.platform_daily_token_budget,
             )
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -2138,26 +3353,44 @@ def ask(
             answer_text = local_answer(
                 context.standalone_question, context.labeled_chunks, context.labeled_extractions
             )
+            v_res = EntailmentVerifier().verify(answer_text, context.labeled_chunks)
+            answer_text = v_res.verified_answer
+            grounding_score = v_res.grounding_score
+            is_grounded = v_res.is_grounded
             parsed = parse_citations(answer_text)
             input_tokens = context.embed_input_tokens
             output_tokens = 0
         else:
             try:
-                answer = gemini_generation_breaker().call(
-                    lambda: generate_answer(
-                        GeminiTextGenerator(_gemini_client(), settings.gemini_model),
-                        context.standalone_question,
-                        context.labeled_chunks,
-                        context.labeled_extractions,
-                    )
-                )
+                verifier = EntailmentVerifier(_gemini_client(), settings.gemini_model)
+
+                def _run_gen() -> GeneratedAnswer:
+                    try:
+                        return generate_answer(
+                            GeminiTextGenerator(_gemini_client(), settings.gemini_model),
+                            context.standalone_question,
+                            context.labeled_chunks,
+                            context.labeled_extractions,
+                            verifier=verifier,
+                        )
+                    except TypeError:
+                        return generate_answer(
+                            GeminiTextGenerator(_gemini_client(), settings.gemini_model),
+                            context.standalone_question,
+                            context.labeled_chunks,
+                            context.labeled_extractions,
+                        )
+
+                answer = gemini_generation_breaker().call(_run_gen)
             except CircuitOpenError as exc:
                 _raise_provider_unavailable(exc)
             answer_text = answer.answer
+            grounding_score = answer.grounding_score
+            is_grounded = answer.is_grounded
             parsed = answer.citations
             input_tokens = answer.input_tokens + context.embed_input_tokens
             output_tokens = answer.output_tokens
-        citations = _citations_for(parsed, context.document_numbers)
+        citations = _citations_for(parsed, context.document_numbers, context.retrieved)
         _record_ask(
             http_request,
             current_user,
@@ -2176,8 +3409,36 @@ def ask(
         if platform_budget is not None and platform_reserved:
             actual_cost = input_tokens + output_tokens
             platform_budget.reconcile("platform", actual_cost)
+        # TableQA synthesis for quantitative/aggregation intents (Feature 4)
+        sql_executed = None
+        table_results = None
+        if classify_query_intent(request.question) != QueryIntent.NARRATIVE_RAG:
+            try:
+                with get_connection() as connection:
+                    table_qa_res = TableQASynthesizer(current_user[1]).execute(
+                        connection, request.question
+                    )
+                if table_qa_res.is_applicable and table_qa_res.data.get("record_count", 0) > 0:
+                    sql_executed = table_qa_res.sql_executed
+                    table_results = table_qa_res.data
+                    if (
+                        "I don't have enough information" in answer_text
+                        or len(answer_text.strip()) < 10
+                    ):
+                        answer_text = table_qa_res.answer
+                    else:
+                        answer_text = f"{table_qa_res.answer}\n\n{answer_text}"
+            except Exception:
+                pass
+
         return AskResponse(
-            answer=answer_text, citations=citations, conversation_id=context.conversation_id
+            answer=answer_text,
+            citations=citations,
+            conversation_id=context.conversation_id,
+            grounding_score=grounding_score,
+            is_grounded=is_grounded,
+            sql_executed=sql_executed,
+            table_results=table_results,
         )
     except Exception:
         # Release reservations on any failure so failed calls don't consume budget
@@ -2192,7 +3453,7 @@ def ask(
 def ask_stream(
     request: AskRequest,
     http_request: Request,
-    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("query:ask")),
 ) -> StreamingResponse:
     """Server-sent-events variant of /ask: ``token`` deltas, then a final ``done``.
 
@@ -2231,8 +3492,11 @@ def ask_stream(
             if token_budget is not None and reserved:
                 token_budget.release_reservation(str(current_user[1]), estimated)
             import logging
+
             logging.getLogger("knowledgeforge.budget").warning(
-                "Platform daily token budget exceeded: %d/%d", current_usage, settings.platform_daily_token_budget
+                "Platform daily token budget exceeded: %d/%d",
+                current_usage,
+                settings.platform_daily_token_budget,
             )
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -2273,18 +3537,28 @@ def ask_stream(
             # Handle budget reconciliation/release after stream completes or fails
             if token_budget is not None and reserved:
                 if stream_succeeded:
-                    actual_cost = generation.input_tokens + context.embed_input_tokens + generation.output_tokens
+                    actual_cost = (
+                        generation.input_tokens
+                        + context.embed_input_tokens
+                        + generation.output_tokens
+                    )
                     token_budget.reconcile(str(current_user[1]), actual_cost)
                 else:
                     token_budget.release_reservation(str(current_user[1]), estimated)
             if platform_budget is not None and platform_reserved:
                 if stream_succeeded:
-                    actual_cost = generation.input_tokens + context.embed_input_tokens + generation.output_tokens
+                    actual_cost = (
+                        generation.input_tokens
+                        + context.embed_input_tokens
+                        + generation.output_tokens
+                    )
                     platform_budget.reconcile("platform", actual_cost)
                 else:
                     platform_budget.release_reservation("platform", estimated)
         full_answer = "".join(parts).strip()
-        citations = _citations_for(parse_citations(full_answer), context.document_numbers)
+        citations = _citations_for(
+            parse_citations(full_answer), context.document_numbers, context.retrieved
+        )
         _record_ask(
             http_request,
             current_user,
@@ -2455,6 +3729,7 @@ def remove_account(current_user: tuple[UUID, UUID, str, bool] = Depends(get_curr
 
 
 # Self-Service Tenant Dashboard & Usage Endpoints (F5)
+
 
 class TenantUsageResponse(BaseModel):
     tenant_id: str
@@ -2632,6 +3907,7 @@ def get_tenant_dashboard_endpoint(
 
 # Outbound Tenant Webhooks Endpoints (F6)
 
+
 class CreateWebhookRequest(BaseModel):
     url: str
     events: list[str] = Field(default_factory=lambda: ["document.ready", "extraction.ready"])
@@ -2664,7 +3940,7 @@ def create_tenant_webhook_endpoint(
     try:
         validate_webhook_url(body.url, allow_private=allow_private)
     except SSRFValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     secret = body.secret or generate_webhook_secret()
     with get_connection() as connection:
@@ -2731,6 +4007,7 @@ def delete_tenant_webhook_endpoint(
 
 
 # Enterprise OIDC SSO Endpoints (F7)
+
 
 class UpdateSSOConfigRequest(BaseModel):
     issuer_url: str
@@ -2800,7 +4077,9 @@ def get_sso_config_endpoint(
         validate_enterprise_tier(connection, tenant_id)
         config = get_sso_config(connection, tenant_id)
     if not config:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SSO configuration not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="SSO configuration not found"
+        )
     return SSOConfigResponse(**config)
 
 
@@ -2811,7 +4090,9 @@ def sso_authorize_endpoint(body: SSOAuthorizeRequest) -> SSOAuthorizeResponse:
         validate_enterprise_tier(connection, body.tenant_id)
         config = get_sso_config(connection, body.tenant_id)
         if not config or not config["enabled"]:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SSO is not enabled for this tenant")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="SSO is not enabled for this tenant"
+            )
 
     state = create_sso_state(body.tenant_id)
     auth_url = build_authorization_url(config, body.redirect_uri, state)
@@ -2866,7 +4147,9 @@ def get_tenant_settings_endpoint(
             )
             row = cursor.fetchone()
             if not row:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found"
+                )
     return TenantSettingsResponse(
         tenant_id=str(tenant_id),
         retention_days=int(row[0] or 0),
@@ -2902,7 +4185,9 @@ def update_tenant_settings_endpoint(
             )
             row = cursor.fetchone()
             if not row:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found"
+                )
             connection.commit()
 
     return TenantSettingsResponse(
@@ -2914,13 +4199,24 @@ def update_tenant_settings_endpoint(
 
 # Admin console endpoints (platform admin only)
 
+
 @router.get("/admin", response_class=HTMLResponse)
 def admin_console_page() -> HTMLResponse:
     """Serve the single-page admin console UI."""
     settings = get_settings()
     if not settings.admin_console_enabled:
         raise HTTPException(status_code=403, detail="Admin console is disabled")
-    return HTMLResponse(content=ADMIN_HTML)
+    nonce = secrets.token_urlsafe(16)
+    from knowledgeforge.admin_ui import render_admin_html
+
+    content = render_admin_html(nonce=nonce)
+    csp = (
+        f"default-src 'self'; script-src 'self' 'nonce-{nonce}'; "
+        f"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        f"font-src 'self' https://fonts.gstatic.com; "
+        f"img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
+    )
+    return HTMLResponse(content=content, headers={"Content-Security-Policy": csp})
 
 
 @router.get("/admin/tenants", response_model=AdminTenantListResponse)
@@ -2982,6 +4278,7 @@ def admin_failed_ingestions(
 
 # Billing and Subscription endpoints
 
+
 @router.post("/billing/webhook")
 async def stripe_webhook(request: Request) -> dict:
     """Process Stripe webhook events with HMAC signature verification and atomic idempotency."""
@@ -3009,6 +4306,7 @@ async def stripe_webhook(request: Request) -> dict:
 
     try:
         import json
+
         event_data = json.loads(payload_bytes.decode("utf-8"))
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
@@ -3150,4 +4448,3 @@ def admin_update_tenant_tier(
     if not updated:
         raise HTTPException(status_code=404, detail="Tenant not found")
     return {"status": "updated", "tenant_id": str(tenant_id), "tier": body.tier}
-

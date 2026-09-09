@@ -6,9 +6,9 @@ tenant-configured document retention lifecycles.
 """
 
 import argparse
-from datetime import UTC, datetime, timedelta
 import logging
 import sys
+from datetime import UTC, datetime, timedelta
 
 from knowledgeforge.config import get_settings
 from knowledgeforge.db import get_connection
@@ -36,11 +36,17 @@ def run_purge(*, max_age_days: int = 30, dry_run: bool = False) -> int:
                 )
                 row = cursor.fetchone()
                 count = int(row[0]) if row else 0
-            logger.info("purge_job.dry_run eligible_unverified_users=%d cutoff=%s", count, cutoff.isoformat())
+            logger.info(
+                "purge_job.dry_run eligible_unverified_users=%d cutoff=%s",
+                count,
+                cutoff.isoformat(),
+            )
             return count
 
         purged_count = purge_unverified_accounts(connection, max_age_days=max_age_days)
-        logger.info("purge_job.executed purged_users=%d max_age_days=%d", purged_count, max_age_days)
+        logger.info(
+            "purge_job.executed purged_users=%d max_age_days=%d", purged_count, max_age_days
+        )
         return purged_count
 
 
@@ -94,9 +100,20 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Purge stale unverified accounts and expired documents (GDPR storage limitation)"
     )
-    parser.add_argument("--max-age-days", type=int, default=30, help="Purge accounts unverified past N days (default: 30)")
-    parser.add_argument("--purge-documents", action="store_true", help="Also purge documents exceeding tenant retention policies")
-    parser.add_argument("--dry-run", action="store_true", help="Count eligible records without deleting")
+    parser.add_argument(
+        "--max-age-days",
+        type=int,
+        default=30,
+        help="Purge accounts unverified past N days (default: 30)",
+    )
+    parser.add_argument(
+        "--purge-documents",
+        action="store_true",
+        help="Also purge documents exceeding tenant retention policies",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Count eligible records without deleting"
+    )
     args = parser.parse_args(argv)
 
     settings = get_settings()

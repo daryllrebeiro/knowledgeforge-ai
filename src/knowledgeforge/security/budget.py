@@ -95,7 +95,14 @@ class RedisBudgetCounter:
     return {1, new_total}
     """
 
-    def __init__(self, client: object, budget_type: str, daily_limit: int, window_seconds: int = 86400, reservation_ttl: int = 300):
+    def __init__(
+        self,
+        client: object,
+        budget_type: str,
+        daily_limit: int,
+        window_seconds: int = 86400,
+        reservation_ttl: int = 300,
+    ):
         self._client = client
         self._budget_type = budget_type
         self._daily_limit = daily_limit
@@ -134,6 +141,7 @@ class RedisBudgetCounter:
             # On Redis failure, DENY the request (fail closed for budget safety)
             # Budget is a safety control; failing open would allow unlimited spend.
             import logging
+
             logging.getLogger("knowledgeforge.budget").error(
                 "Redis budget counter unavailable for %s/%s; denying request",
                 self._budget_type,
@@ -141,10 +149,11 @@ class RedisBudgetCounter:
                 exc_info=True,
             )
             from fastapi import HTTPException, status
+
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Budget service unavailable; please retry"
-            )
+                detail="Budget service unavailable; please retry",
+            ) from None
 
     def release_reservation(self, tenant_id: str, estimated_cost: int) -> bool:
         """Release a reservation by decrementing the counter.
@@ -163,6 +172,7 @@ class RedisBudgetCounter:
             return int(result[0]) == 1
         except Exception:
             import logging
+
             logging.getLogger("knowledgeforge.budget").warning(
                 "Redis budget release failed for %s/%s",
                 self._budget_type,
@@ -199,6 +209,7 @@ class RedisBudgetCounter:
             return int(result[0]) == 1
         except Exception:
             import logging
+
             logging.getLogger("knowledgeforge.budget").warning(
                 "Redis budget reconcile failed for %s/%s",
                 self._budget_type,
@@ -215,6 +226,7 @@ def _get_redis_client() -> object | None:
         return None
     try:
         import redis
+
         return redis.Redis.from_url(settings.redis_url, decode_responses=True)
     except ImportError:
         return None
@@ -235,7 +247,7 @@ def get_token_budget() -> RedisBudgetCounter | None:
             return None
         settings = get_settings()
         # Default to 1M tokens/day if not configured
-        daily_limit = getattr(settings, 'daily_token_budget', 1_000_000)
+        daily_limit = getattr(settings, "daily_token_budget", 1_000_000)
         _token_budget = RedisBudgetCounter(client, "tokens", daily_limit)
     return _token_budget
 
@@ -254,7 +266,7 @@ def get_platform_token_budget() -> RedisBudgetCounter | None:
             return None
         settings = get_settings()
         # Default to 10M tokens/day platform-wide (10x per-tenant default)
-        daily_limit = getattr(settings, 'platform_daily_token_budget', 10_000_000)
+        daily_limit = getattr(settings, "platform_daily_token_budget", 10_000_000)
         _platform_token_budget = RedisBudgetCounter(client, "platform_tokens", daily_limit)
     return _platform_token_budget
 
@@ -268,7 +280,7 @@ def get_extraction_budget() -> RedisBudgetCounter | None:
             return None
         settings = get_settings()
         # Default to 1000 extractions/day if not configured
-        daily_limit = getattr(settings, 'daily_extraction_budget', 1000)
+        daily_limit = getattr(settings, "daily_extraction_budget", 1000)
         _extraction_budget = RedisBudgetCounter(client, "extractions", daily_limit)
     return _extraction_budget
 
@@ -284,6 +296,17 @@ def estimate_token_cost(question: str, max_context_chars: int = 10000) -> int:
     # Output tokens: estimate ~500 tokens for answer
     output_tokens = 500
     return input_tokens + output_tokens
+
+
+def estimate_research_token_cost(brief: str, max_iterations: int = 3) -> int:
+    """Estimate token cost for autonomous multi-round research jobs.
+
+    Scales proportionally with max_iterations to account for iterative sub-goal
+    execution, document retrieval, and dossier synthesis.
+    """
+    iterations = max(1, max_iterations)
+    base_cost = estimate_token_cost(brief, max_context_chars=10000)
+    return iterations * base_cost
 
 
 def invalidate_tenant_budget_cache(tenant_id: object, redis_client: object | None = None) -> None:
@@ -320,6 +343,7 @@ def get_tenant_budget_limits(
             cached = client.get(cache_key)  # type: ignore[attr-defined]
             if cached:
                 import json
+
                 data = json.loads(cached)
                 return (
                     int(data["token_limit"]),
@@ -350,12 +374,15 @@ def get_tenant_budget_limits(
         if client is not None:
             try:
                 import json
-                payload = json.dumps({
-                    "token_limit": token_limit,
-                    "extraction_limit": extraction_limit,
-                    "tier": tier,
-                    "is_verified": is_verified,
-                })
+
+                payload = json.dumps(
+                    {
+                        "token_limit": token_limit,
+                        "extraction_limit": extraction_limit,
+                        "tier": tier,
+                        "is_verified": is_verified,
+                    }
+                )
                 client.setex(cache_key, 60, payload)  # type: ignore[attr-defined]
             except Exception:
                 pass

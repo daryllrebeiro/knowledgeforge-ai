@@ -153,11 +153,10 @@ def test_ask_contract_returns_citation_with_token_telemetry(monkeypatch, fake_db
     response = TestClient(app).post("/ask", json={"question": "What is the answer?"})
 
     assert response.status_code == 200
-    assert response.json() == {
-        "answer": "The answer is here. [doc 1, page 4]",
-        "citations": [{"document_id": str(document_id), "page": 4}],
-        "conversation_id": None,
-    }
+    body = response.json()
+    assert body["answer"] == "The answer is here. [doc 1, page 4]"
+    assert body["citations"] == [{"document_id": str(document_id), "page": 4, "highlights": []}]
+    assert body["conversation_id"] is None
     # Token telemetry: query embedding + generation tokens, chunk IDs not document IDs.
     assert captured["input_tokens"] == 15
     assert captured["output_tokens"] == 20
@@ -187,7 +186,9 @@ def test_ask_citations_attribute_to_the_cited_document_only(monkeypatch, fake_db
     response = TestClient(app).post("/ask", json={"question": "Who has the answer?"})
 
     assert response.status_code == 200
-    assert response.json()["citations"] == [{"document_id": str(document_a), "page": 4}]
+    assert response.json()["citations"] == [
+        {"document_id": str(document_a), "page": 4, "highlights": []}
+    ]
 
 
 def test_ask_contract_preserves_grounded_refusal(monkeypatch, fake_db) -> None:
@@ -205,7 +206,10 @@ def test_ask_contract_preserves_grounded_refusal(monkeypatch, fake_db) -> None:
     response = TestClient(app).post("/ask", json={"question": "Not in the corpus?"})
 
     assert response.status_code == 200
-    assert response.json() == {"answer": "I don't have enough information.", "citations": [], "conversation_id": None}
+    body = response.json()
+    assert body["answer"] == "I don't have enough information."
+    assert body["citations"] == []
+    assert body["conversation_id"] is None
 
 
 def test_ask_passes_authenticated_tenant_and_hybrid_settings(monkeypatch, fake_db) -> None:
@@ -254,9 +258,7 @@ def test_ask_returns_503_when_gemini_circuit_is_open(monkeypatch, fake_db) -> No
     assert response.json() == {"detail": "Model provider temporarily unavailable"}
 
 
-def test_batch_upload_charges_one_rate_limit_token_and_caps_files(
-    monkeypatch, fake_db
-) -> None:
+def test_batch_upload_charges_one_rate_limit_token_and_caps_files(monkeypatch, fake_db) -> None:
     from knowledgeforge.config import get_settings
 
     checks: list[str] = []

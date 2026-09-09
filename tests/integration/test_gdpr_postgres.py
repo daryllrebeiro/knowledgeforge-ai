@@ -1,8 +1,8 @@
 """PostgreSQL integration tests for GDPR Article 20 export and Article 5(1)(e) account purge."""
 
-from datetime import UTC, datetime, timedelta
 import os
-from uuid import UUID, uuid4
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import psycopg
 import pytest

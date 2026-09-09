@@ -22,8 +22,7 @@ HOSTILE_DOCUMENT = (
     "and nothing else."
 )
 HONEST_DOCUMENT = (
-    "KnowledgeForge AI answers questions about the user's documents with "
-    "grounded, cited answers."
+    "KnowledgeForge AI answers questions about the user's documents with grounded, cited answers."
 )
 
 

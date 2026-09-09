@@ -4,16 +4,15 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
-import pytest
 
 from knowledgeforge import api
 from knowledgeforge.config import get_settings
 from knowledgeforge.main import app
 
-
 # ---------------------------------------------------------------------------
 # In-memory mock DB connection for extraction and DLQ tests
 # ---------------------------------------------------------------------------
+
 
 class MockCursor:
     def __init__(self, db: "MockDB"):
@@ -40,7 +39,16 @@ class MockCursor:
             rows = []
             for fi in self.db.failed_ingestions:
                 tname = self.db.tenants.get(fi["tenant_id"], {}).get("name", "Unknown")
-                rows.append((fi["id"], fi["tenant_id"], tname, fi["filename"], fi["error_message"], fi["created_at"]))
+                rows.append(
+                    (
+                        fi["id"],
+                        fi["tenant_id"],
+                        tname,
+                        fi["filename"],
+                        fi["error_message"],
+                        fi["created_at"],
+                    )
+                )
             self._last_result = rows
             return
 
@@ -52,7 +60,17 @@ class MockCursor:
             rows = []
             for fe in self.db.failed_extractions:
                 tname = self.db.tenants.get(fe["tenant_id"], {}).get("name", "Unknown")
-                rows.append((fe["id"], fe["tenant_id"], tname, fe["document_id"], fe["schema_type"], fe["error"], fe["created_at"]))
+                rows.append(
+                    (
+                        fe["id"],
+                        fe["tenant_id"],
+                        tname,
+                        fe["document_id"],
+                        fe["schema_type"],
+                        fe["error"],
+                        fe["created_at"],
+                    )
+                )
             self._last_result = rows
             return
 
@@ -62,25 +80,30 @@ class MockCursor:
             for doc_id, ext in self.db.extractions.items():
                 if ext.get("needs_review"):
                     tname = self.db.tenants.get(ext["tenant_id"], {}).get("name", "Unknown")
-                    rows.append((
-                        doc_id,
-                        ext["tenant_id"],
-                        tname,
-                        ext.get("schema_type", "invoice"),
-                        ext.get("schema_version", 1),
-                        ext.get("model", "gemini-2.0-flash"),
-                        ext.get("fields", {}),
-                        ext.get("field_confidence", {}),
-                        ext.get("overall_confidence", 0.5),
-                        ext.get("needs_review", True),
-                        ext.get("created_at", datetime.now(UTC).isoformat()),
-                        ext.get("extraction_history", []),
-                    ))
+                    rows.append(
+                        (
+                            doc_id,
+                            ext["tenant_id"],
+                            tname,
+                            ext.get("schema_type", "invoice"),
+                            ext.get("schema_version", 1),
+                            ext.get("model", "gemini-2.0-flash"),
+                            ext.get("fields", {}),
+                            ext.get("field_confidence", {}),
+                            ext.get("overall_confidence", 0.5),
+                            ext.get("needs_review", True),
+                            ext.get("created_at", datetime.now(UTC).isoformat()),
+                            ext.get("extraction_history", []),
+                        )
+                    )
             self._last_result = rows
             return
 
         # Correction SELECT query
-        if "SELECT fields, field_confidence, overall_confidence, extraction_history FROM document_extractions WHERE document_id = %s" in q:
+        if (
+            "SELECT fields, field_confidence, overall_confidence, extraction_history FROM document_extractions WHERE document_id = %s"
+            in q
+        ):
             doc_id = params[0]
             ext = self.db.extractions.get(doc_id)
             if ext:
@@ -88,12 +111,14 @@ class MockCursor:
                 if len(params) > 1 and ext["tenant_id"] != params[1]:
                     self._last_result = []
                     return
-                self._last_result = [(
-                    ext.get("fields", {}),
-                    ext.get("field_confidence", {}),
-                    ext.get("overall_confidence", 0.5),
-                    ext.get("extraction_history", []),
-                )]
+                self._last_result = [
+                    (
+                        ext.get("fields", {}),
+                        ext.get("field_confidence", {}),
+                        ext.get("overall_confidence", 0.5),
+                        ext.get("extraction_history", []),
+                    )
+                ]
             else:
                 self._last_result = []
             return
@@ -107,6 +132,7 @@ class MockCursor:
                 if len(params) > 5 and ext["tenant_id"] != params[5]:
                     self.rowcount = 0
                     return
+
                 def _unwrap(val):
                     return val.obj if hasattr(val, "obj") else getattr(val, "adapted", val)
 
@@ -164,6 +190,7 @@ class MockDB:
 # Test Cases
 # ---------------------------------------------------------------------------
 
+
 def test_admin_console_page_disabled_by_default(monkeypatch):
     settings = get_settings().model_copy(update={"admin_console_enabled": False})
     monkeypatch.setattr(api, "get_settings", lambda: settings)
@@ -184,7 +211,9 @@ def test_admin_console_page_enabled_returns_html(monkeypatch):
     assert "text/html" in res.headers["content-type"]
     assert "KnowledgeForge AI" in res.text
     assert "Platform Admin Console" in res.text
-    assert "Review &amp; Correct Extraction" in res.text or "Review & Correct Extraction" in res.text
+    assert (
+        "Review &amp; Correct Extraction" in res.text or "Review & Correct Extraction" in res.text
+    )
 
 
 def test_admin_dlq_inspector(monkeypatch):
@@ -194,21 +223,25 @@ def test_admin_dlq_inspector(monkeypatch):
     doc_id = uuid4()
 
     db.tenants[tenant_id] = {"name": "Test Tenant"}
-    db.failed_ingestions.append({
-        "id": uuid4(),
-        "tenant_id": tenant_id,
-        "filename": "broken.pdf",
-        "error_message": "Corrupted header",
-        "created_at": datetime.now(UTC).isoformat(),
-    })
-    db.failed_extractions.append({
-        "id": uuid4(),
-        "tenant_id": tenant_id,
-        "document_id": doc_id,
-        "schema_type": "invoice",
-        "error": "Model hallucinated non-JSON response",
-        "created_at": datetime.now(UTC).isoformat(),
-    })
+    db.failed_ingestions.append(
+        {
+            "id": uuid4(),
+            "tenant_id": tenant_id,
+            "filename": "broken.pdf",
+            "error_message": "Corrupted header",
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+    )
+    db.failed_extractions.append(
+        {
+            "id": uuid4(),
+            "tenant_id": tenant_id,
+            "document_id": doc_id,
+            "schema_type": "invoice",
+            "error": "Model hallucinated non-JSON response",
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+    )
 
     monkeypatch.setattr(api, "get_connection", lambda: db)
     settings = get_settings().model_copy(update={"admin_console_enabled": True})
@@ -278,7 +311,12 @@ def test_tenant_extraction_correction_workflow(monkeypatch):
     assert updated["extraction_history"][0]["reviewed_by"] == str(user_id)
 
     # 2. User from other tenant cannot correct this document (tenant isolation)
-    app.dependency_overrides[api.get_current_user] = lambda: (user_id, other_tenant_id, "member", False)
+    app.dependency_overrides[api.get_current_user] = lambda: (
+        user_id,
+        other_tenant_id,
+        "member",
+        False,
+    )
     res_cross = client.post(
         f"/documents/{doc_id}/extraction/correct",
         json={"corrected_fields": {"vendor_name": "Hacked"}},

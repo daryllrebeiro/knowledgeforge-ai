@@ -7,7 +7,7 @@ Provides:
 4. Human-in-the-loop Extraction Review & Correction queue.
 """
 
-ADMIN_HTML = """<!DOCTYPE html>
+_ADMIN_HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -384,27 +384,27 @@ ADMIN_HTML = """<!DOCTYPE html>
       <span class="brand-badge">Platform Admin</span>
     </div>
     <div class="auth-bar">
-      <input type="password" id="bearer-token" class="api-token-input" placeholder="Admin Bearer Token (optional if cookie)" onchange="saveToken()">
-      <button class="btn btn-secondary" onclick="loadActiveView()">Refresh</button>
+      <input type="password" id="bearer-token" class="api-token-input" placeholder="Admin Bearer Token (optional if cookie)">
+      <button class="btn btn-secondary" id="btn-refresh">Refresh</button>
     </div>
   </header>
 
   <div class="app-container">
     <nav class="sidebar">
-      <button class="nav-btn active" onclick="switchView('tenants')" id="btn-tenants">
+      <button class="nav-btn active" data-view="tenants" id="btn-tenants">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
         Tenants & Billing
       </button>
-      <button class="nav-btn" onclick="switchView('extractions')" id="btn-extractions">
+      <button class="nav-btn" data-view="extractions" id="btn-extractions">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
         Review Queue
         <span class="nav-badge" id="review-badge" style="display:none">0</span>
       </button>
-      <button class="nav-btn" onclick="switchView('dlq')" id="btn-dlq">
+      <button class="nav-btn" data-view="dlq" id="btn-dlq">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
         DLQ Inspector
       </button>
-      <button class="nav-btn" onclick="switchView('ingestions')" id="btn-ingestions">
+      <button class="nav-btn" data-view="ingestions" id="btn-ingestions">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
         Failed Ingestions
       </button>
@@ -518,7 +518,7 @@ ADMIN_HTML = """<!DOCTYPE html>
     <div class="modal-card">
       <div class="modal-header">
         <h3 style="font-weight: 600;">Adjust Tenant Subscription Tier</h3>
-        <button class="btn btn-secondary" onclick="closeModal('tier-modal')">&times;</button>
+        <button class="btn btn-secondary" data-close-modal="tier-modal">&times;</button>
       </div>
       <input type="hidden" id="modal-tenant-id">
       <div class="form-group">
@@ -538,8 +538,8 @@ ADMIN_HTML = """<!DOCTYPE html>
         </select>
       </div>
       <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1.5rem;">
-        <button class="btn btn-secondary" onclick="closeModal('tier-modal')">Cancel</button>
-        <button class="btn btn-primary" onclick="submitTierChange()">Save Changes</button>
+        <button class="btn btn-secondary" data-close-modal="tier-modal">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-tier">Save Changes</button>
       </div>
     </div>
   </div>
@@ -549,7 +549,7 @@ ADMIN_HTML = """<!DOCTYPE html>
     <div class="modal-card">
       <div class="modal-header">
         <h3 style="font-weight: 600;">Review & Correct Extraction</h3>
-        <button class="btn btn-secondary" onclick="closeModal('correction-modal')">&times;</button>
+        <button class="btn btn-secondary" data-close-modal="correction-modal">&times;</button>
       </div>
       <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:1.25rem;">
         Edit field values below. Corrections will update the active extraction, clear the review flag, and save the original model output to the audit history.
@@ -557,8 +557,8 @@ ADMIN_HTML = """<!DOCTYPE html>
       <input type="hidden" id="modal-correction-doc-id">
       <div id="correction-fields-container"></div>
       <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1.5rem;">
-        <button class="btn btn-secondary" onclick="closeModal('correction-modal')">Cancel</button>
-        <button class="btn btn-primary" onclick="submitExtractionCorrection()">Submit Human Correction</button>
+        <button class="btn btn-secondary" data-close-modal="correction-modal">Cancel</button>
+        <button class="btn btn-primary" id="btn-submit-correction">Submit Human Correction</button>
       </div>
     </div>
   </div>
@@ -628,7 +628,7 @@ ADMIN_HTML = """<!DOCTYPE html>
             <td>${t.token_usage.toLocaleString()} / ${t.token_limit.toLocaleString()}</td>
             <td>${t.extraction_usage} / ${t.extraction_limit}</td>
             <td>${t.is_email_verified ? '<span style="color:var(--success)">✓ Verified</span>' : '<span style="color:var(--warning)">Pending</span>'}</td>
-            <td><button class="btn btn-secondary" onclick="openTierModal('${t.tenant_id}', '${t.tier}', '${t.subscription_status}')">Edit Tier</button></td>
+            <td><button class="btn btn-secondary btn-edit-tier" data-tenant-id="${t.tenant_id}" data-tier="${t.tier}" data-status="${t.subscription_status}">Edit Tier</button></td>
           </tr>
         `).join('');
       } catch (e) {
@@ -673,7 +673,7 @@ ADMIN_HTML = """<!DOCTYPE html>
               </td>
               <td><small>${fieldsStr}</small></td>
               <td><small>${i.created_at ? i.created_at.slice(0, 19).replace('T', ' ') : ''}</small></td>
-              <td><button class="btn btn-primary" onclick="openCorrectionModal('${i.document_id}')">Review & Correct</button></td>
+              <td><button class="btn btn-primary btn-edit-extraction" data-doc-id="${i.document_id}">Review & Correct</button></td>
             </tr>
           `;
         }).join('');
@@ -815,13 +815,53 @@ ADMIN_HTML = """<!DOCTYPE html>
       return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    // Initialize
+    // Initialize & bind event listeners (strict CSP compliant, zero inline handlers)
     window.addEventListener('DOMContentLoaded', () => {
       const saved = localStorage.getItem('kf_admin_token');
       if (saved) document.getElementById('bearer-token').value = saved;
+
+      document.getElementById('bearer-token')?.addEventListener('change', saveToken);
+      document.getElementById('btn-refresh')?.addEventListener('click', loadActiveView);
+      document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
+        btn.addEventListener('click', () => switchView(btn.getAttribute('data-view')));
+      });
+      document.querySelectorAll('[data-close-modal]').forEach(btn => {
+        btn.addEventListener('click', () => closeModal(btn.getAttribute('data-close-modal')));
+      });
+      document.getElementById('btn-save-tier')?.addEventListener('click', submitTierChange);
+      document.getElementById('btn-submit-correction')?.addEventListener('click', submitExtractionCorrection);
+
+      // Event delegation for dynamically loaded tables
+      document.addEventListener('click', (e) => {
+        const tierBtn = e.target.closest('.btn-edit-tier');
+        if (tierBtn) {
+          openTierModal(
+            tierBtn.getAttribute('data-tenant-id'),
+            tierBtn.getAttribute('data-tier'),
+            tierBtn.getAttribute('data-status')
+          );
+          return;
+        }
+        const extBtn = e.target.closest('.btn-edit-extraction');
+        if (extBtn) {
+          openCorrectionModal(extBtn.getAttribute('data-doc-id'));
+          return;
+        }
+      });
+
       loadActiveView();
     });
   </script>
 </body>
 </html>
 """
+
+
+def render_admin_html(nonce: str = "") -> str:
+    """Render the admin console single-page HTML with optional CSP script nonce."""
+    nonce_attr = f' nonce="{nonce}"' if nonce else ""
+    return _ADMIN_HTML_TEMPLATE.replace("<script>", f"<script{nonce_attr}>")
+
+
+ADMIN_HTML = render_admin_html("")
+

@@ -50,8 +50,14 @@ class FakeConnection:
 
 
 def _valid_row(revoked_at, expires_at=None):
-    return (TOKEN_ID, FAMILY_ID, revoked_at, expires_at or datetime.now(UTC) + timedelta(days=1),
-            USER_ID, TENANT_ID)
+    return (
+        TOKEN_ID,
+        FAMILY_ID,
+        revoked_at,
+        expires_at or datetime.now(UTC) + timedelta(days=1),
+        USER_ID,
+        TENANT_ID,
+    )
 
 
 def test_rotate_returns_new_identity_and_token() -> None:

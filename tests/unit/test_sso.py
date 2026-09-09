@@ -2,17 +2,16 @@
 
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from jose import jwt
-import pytest
 
 from knowledgeforge import api
 from knowledgeforge.config import get_settings
 from knowledgeforge.main import app
 from knowledgeforge.security.sso import (
-    SSOTierError,
     SSOValidationError,
     create_sso_state,
     verify_sso_state,
@@ -50,10 +49,13 @@ def test_sso_config_rejected_for_pro_tier(monkeypatch):
     class FakeCursor:
         def __enter__(self):
             return self
+
         def __exit__(self, *args):
             pass
+
         def execute(self, query, params=()):
             pass
+
         def fetchone(self):
             return ("pro",)
 

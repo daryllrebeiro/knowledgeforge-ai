@@ -1,12 +1,8 @@
 """Enterprise OIDC Single Sign-On (SSO) integration module."""
 
-from datetime import UTC, datetime, timedelta
-import hashlib
-import hmac
-import json
 import logging
 import secrets
-import time
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode, urlparse
 from uuid import UUID, uuid4
@@ -41,7 +37,9 @@ def validate_enterprise_tier(connection, tenant_id: UUID) -> None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
         tier = str(row[0]).lower()
         if tier != "enterprise":
-            raise SSOTierError(f"OIDC SSO is restricted to Enterprise tenants; current tier is '{tier}'")
+            raise SSOTierError(
+                f"OIDC SSO is restricted to Enterprise tenants; current tier is '{tier}'"
+            )
 
 
 def create_sso_state(tenant_id: UUID) -> str:
@@ -151,7 +149,9 @@ def build_authorization_url(
 ) -> str:
     """Build the IdP authorization endpoint redirect URL."""
     issuer = sso_config["issuer_url"].rstrip("/")
-    auth_endpoint = f"{issuer}/protocol/openid-connect/auth" if "keycloak" in issuer else f"{issuer}/authorize"
+    auth_endpoint = (
+        f"{issuer}/protocol/openid-connect/auth" if "keycloak" in issuer else f"{issuer}/authorize"
+    )
     params = {
         "response_type": "code",
         "client_id": sso_config["client_id"],

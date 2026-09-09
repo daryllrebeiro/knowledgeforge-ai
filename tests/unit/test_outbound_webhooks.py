@@ -1,12 +1,12 @@
 """Unit tests for outbound tenant webhooks, HMAC signing, and SSRF defense."""
 
+import time
 from contextlib import contextmanager
 from datetime import UTC, datetime
-import time
-from uuid import UUID, uuid4
+from uuid import uuid4
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from knowledgeforge import api
 from knowledgeforge.main import app
@@ -14,7 +14,6 @@ from knowledgeforge.security.ssrf import SSRFValidationError, validate_webhook_u
 from knowledgeforge.security.webhooks import (
     compute_signature_header,
     generate_webhook_secret,
-    sign_webhook_payload,
     verify_webhook_signature,
 )
 
@@ -29,6 +28,7 @@ def clean_dependency_overrides():
 # ==========================================
 # 1. SSRF Defense Unit Tests
 # ==========================================
+
 
 def test_ssrf_rejects_loopback():
     with pytest.raises(SSRFValidationError):
@@ -85,6 +85,7 @@ def test_ssrf_accepts_valid_public_url(monkeypatch):
 # 2. HMAC Signature Unit Tests
 # ==========================================
 
+
 def test_hmac_signing_and_verification():
     secret = generate_webhook_secret()
     payload = '{"event":"document.ready","document_id":"doc-123"}'
@@ -111,6 +112,7 @@ def test_hmac_signing_and_verification():
 # ==========================================
 # 3. API Endpoint Tests
 # ==========================================
+
 
 def test_create_webhook_ssrf_rejected(monkeypatch):
     tenant_id = uuid4()
