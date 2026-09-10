@@ -175,7 +175,7 @@ def test_version_chain_survives_intermediate_delete(monkeypatch) -> None:
     V2 = UUID("22222222-2222-2222-2222-222222222222")
     V3 = UUID("33333333-3333-3333-3333-333333333333")
 
-    def fake_list_documents(connection, tenant_id, *, limit=50, offset=0):
+    def fake_list_documents(connection, tenant_id, *, limit=50, offset=0, **kwargs):
         return [
             DocumentSummaryRow(V3, "doc_v3.txt", "text", "ready", 3, None),
             DocumentSummaryRow(V2, "doc_v2.txt", "text", "ready", 2, str(V3)),
@@ -200,7 +200,7 @@ def test_version_chain_survives_intermediate_delete(monkeypatch) -> None:
     assert response.status_code == 204
 
     # List documents - v1 should now point to v3 directly
-    def fake_list_documents_after_delete(connection, tenant_id, *, limit=50, offset=0):
+    def fake_list_documents_after_delete(connection, tenant_id, *, limit=50, offset=0, **kwargs):
         return [
             DocumentSummaryRow(V3, "doc_v3.txt", "text", "ready", 3, None),
             DocumentSummaryRow(
