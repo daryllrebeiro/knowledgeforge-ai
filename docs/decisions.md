@@ -448,6 +448,56 @@ To support programmatic clients and external integrators with stability guarante
      - Execute test unmask against canary surrogate tokens under the rotated tenant(s) to verify successful decryption.
      - Revoke and decommission the old master secret from Secret Manager.
 
+## 2026-09-09 — Phase 8 Architecture Decisions: New Feature Wave 2
 
+1. **Shared Workspaces & Collections (Item 1)**:
+   - **Sub-Tenant Isolation via SQL Join**: Collections partition documents within a tenant (`migrations/035_collections_workspaces.sql`). Retrieval queries (`retrieve_chunks`), document listings (`list_documents`), and document detail views (`get_document_detail`) in `src/knowledgeforge/collections/service.py` enforce collection access directly in SQL WHERE clauses using `EXISTS` subqueries over `collection_documents` and `collection_memberships`. Documents in private collections remain inaccessible to tenant users who lack explicit membership.
+   - **Verified via Unit Tests**: `tests/unit/test_collections_isolation.py`.
 
+2. **Knowledge Graph Visualization Front-End (Item 2)**:
+   - **Reusing Audited Graph Traversal Backend**: Visualizer endpoint `GET /graph/view` in `src/knowledgeforge/api.py` renders an interactive HTML/SVG explorer that consumes `/graph/query` without modifying backend traversal code, preserving existing cycle-guarded, depth-limited CTE guarantees.
+   - **CSP Hardening**: Served with `Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-...'; frame-ancestors 'none'`, protecting against clickjacking and script injection.
+   - **Verified via Unit Tests**: `tests/unit/test_graph_view.py`.
 
+3. **Recurring Activity Digests (Item 3)**:
+   - **Decoupled Asynchronous Aggregator**: Periodic activity metrics (documents ingested, extractions, failed ingestions, search queries) are aggregated by `src/knowledgeforge/worker/digest_job.py` based on `tenant_digest_settings` (`migrations/036_playbooks_and_digests.sql`).
+   - **Cloud Scheduler & Run Integration**: Scheduled via Cloud Run Job `google_cloud_run_v2_job.digest` and Cloud Scheduler `google_cloud_scheduler_job.recurring_digest` defined in `infrastructure/terraform/main.tf`. Dispatches transactional emails via `src/knowledgeforge/security/mailer.py`.
+   - **Verified via Unit Tests**: `tests/unit/test_recurring_digests.py`.
+
+4. **Document Drafting from Grounded Context (Item 4)**:
+   - **Anti-Reingestion Invariant**: `POST /ask/draft` generates structured long-form drafts grounded in retrieved context via `src/knowledgeforge/generation/drafting.py`. Draft outputs are deliberately NOT written to `documents` or `chunks` tables to prevent synthetic data feedback loops.
+   - **Upfront Budget Metering**: Calls `RedisBudgetCounter.check_and_reserve()` before LLM generation and reconciles actual prompt and output tokens afterwards.
+   - **Verified via Unit Tests**: `tests/unit/test_drafting_budget.py`.
+
+5. **Auto-Clustering & Tagging with Human-in-the-Loop Review (Item 5)**:
+   - **Mean-Pooling Document Representations**: `src/knowledgeforge/clustering/engine.py` computes document embeddings by averaging chunk vector representations, and identifies clusters using pairwise cosine similarity (`migrations/038_clustering_widgets_mobile.sql`).
+   - **Explicit Human Confirmation**: Discovered clusters are stored with status `suggested`. Collections and tags are never applied automatically; callers must confirm via `POST /clusters/{id}/confirm` or dismiss via `POST /clusters/{id}/dismiss`.
+   - **Verified via Unit Tests**: `tests/unit/test_clustering_tagging.py`.
+
+6. **Saved Playbooks Engine (Item 6)**:
+   - **Pre-Configured Document Diligence**: Automated question sets are defined in `playbooks` (`migrations/036_playbooks_and_digests.sql`) and executed by `src/knowledgeforge/playbooks/runner.py`.
+   - **Upfront Token Reservation**: Each playbook question verifies and reserves budget via `RedisBudgetCounter` before execution. If budget is insufficient, execution aborts with `PlaybookBudgetExceededError` without untracked token spend.
+   - **Verified via Unit Tests**: `tests/unit/test_playbooks_budget.py`.
+
+7. **Multi-Step Document Approval Workflows (Item 7)**:
+   - **Database-Enforced Invariants**: Multi-step review states are tracked in `approval_chains`, `approval_instances`, and `approval_actions` (`migrations/037_document_approvals.sql`).
+   - **Trigger Guardrails**: PostgreSQL trigger `trg_enforce_approval_completion` prevents setting instance status to `approved` before all steps are satisfied. Database trigger `trg_enforce_document_finalization` rejects updating document `status = 'final'` when pending approvals exist.
+   - **Row-Level Concurrency Locks**: Handled in `src/knowledgeforge/approvals/service.py` using `FOR UPDATE OF ai` and a `UNIQUE (instance_id, step_index)` constraint to block double-processing races.
+   - **Verified via Unit Tests**: `tests/unit/test_approval_invariants.py`.
+
+8. **Multilingual Ingestion & Cross-Lingual Retrieval (Item 8)**:
+   - **Cross-Lingual Prompt Formulation**: System prompt in `src/knowledgeforge/generation/prompt.py` directs responses to match the question language while citing source passages in their original language.
+   - **Grounded Benchmark Evaluation**: Evaluated against multilingual golden dataset `evaluation/multilingual-golden-set.json` using runner `evaluation/run_multilingual_eval.py`, achieving 100.0% Hit@1 retrieval accuracy and 100.0% citation grounding across DE->EN, ES->EN, and JA->EN test queries.
+   - **Verified via Unit Tests & Evaluation Runner**: `tests/unit/test_multilingual_retrieval.py` and `evaluation/run_multilingual_eval.py`.
+
+9. **Embeddable White-Label Widget Security (Item 9)**:
+   - **Strict Origin Validation**: Widget configuration in `src/knowledgeforge/widget/service.py` strictly validates Origin headers (`migrations/038_clustering_widgets_mobile.sql`). Wildcard `*` origins are rejected during creation.
+   - **Dedicated Rate Limiting**: Employs per-widget/per-IP token bucket limits defending against traffic floods with HTTP 429 responses.
+   - **Collection Scoping**: Embed queries via `POST /widget/ask` are strictly bound to `widget.collection_id`.
+   - **Verified via Unit Tests**: `tests/unit/test_widget_security.py`.
+
+10. **Mobile App Device Lifecycle & Token Rotation (Item 10)**:
+    - **Push Channel Abstraction**: Supports mobile platforms (`ios`, `android`, `web_push`) via `src/knowledgeforge/mobile/notifications.py` (`migrations/038_clustering_widgets_mobile.sql`).
+    - **Refresh Token Rotation**: Manages background/resume mobile sessions via `src/knowledgeforge/security/refresh.py`. Rotates tokens on each refresh and revokes token families upon replay detection.
+    - **Verified via Unit Tests**: `tests/unit/test_mobile_lifecycle.py`.
+    - **Adversarial Audit**: Verified across all Phase 8 attack surfaces with zero trust boundary leaks in `tests/unit/test_round7_adversarial_audit.py`.

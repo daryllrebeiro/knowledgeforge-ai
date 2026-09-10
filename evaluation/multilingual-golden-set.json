@@ -1,0 +1,62 @@
+{
+  "description": "Multilingual cross-lingual retrieval and citation golden set (Phase 8 Item 8)",
+  "language_pairs": [
+    {
+      "source_lang": "de",
+      "target_lang": "en",
+      "documents": [
+        {
+          "id": "doc-de-01",
+          "title": "Datenschutzrichtlinie und Haftungsbegrenzung",
+          "text": "Die Haftung des Anbieters ist im Rahmen dieses Vertrags auf den Betrag von 50.000 Euro begrenzt. Personenbezogene Daten werden ausschließlich nach den Grundsätzen der DSGVO verarbeitet."
+        }
+      ],
+      "queries": [
+        {
+          "question": "What is the liability limitation amount specified in the agreement?",
+          "expected_doc_id": "doc-de-01",
+          "expected_snippet": "50.000 Euro",
+          "expected_lang": "en"
+        }
+      ]
+    },
+    {
+      "source_lang": "es",
+      "target_lang": "en",
+      "documents": [
+        {
+          "id": "doc-es-01",
+          "title": "Términos de Servicio y Período de Garantía",
+          "text": "El período de garantía del software tiene una duración improrrogable de veinticuatro meses a partir de la fecha de entrega inicial."
+        }
+      ],
+      "queries": [
+        {
+          "question": "How long is the software warranty period from the initial delivery date?",
+          "expected_doc_id": "doc-es-01",
+          "expected_snippet": "veinticuatro meses",
+          "expected_lang": "en"
+        }
+      ]
+    },
+    {
+      "source_lang": "ja",
+      "target_lang": "en",
+      "documents": [
+        {
+          "id": "doc-ja-01",
+          "title": "契約解除条件および通知期間",
+          "text": "本契約の解約を希望する当事者は、解約希望日の少なくとも60日前までに書面により相手方に通知しなければならない。"
+        }
+      ],
+      "queries": [
+        {
+          "question": "What is the minimum written notice period required for contract termination?",
+          "expected_doc_id": "doc-ja-01",
+          "expected_snippet": "60日前",
+          "expected_lang": "en"
+        }
+      ]
+    }
+  ]
+}

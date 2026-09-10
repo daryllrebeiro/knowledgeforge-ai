@@ -102,4 +102,73 @@ Status Taxonomy:
 - [Implemented] Process Fix: Added strategic projection disclaimer header to `REVIEW_AND_ROADMAP.md`, hedged qualitative claims, and extended `scripts/verify_decisions.py` to mechanically scan committed markdown documents for unhedged absolute claims.
 - [Verified] Unit test suites `tests/unit/test_privacy_vault.py`, `tests/unit/test_config.py`, `tests/unit/test_research_jobs_budget.py`, `tests/unit/test_admin_routes_auth.py`, `tests/unit/test_diff_engine_scoping.py`, `tests/unit/test_csp_headers.py`, `tests/unit/test_api_key_scopes.py`, and `tests/unit/test_decisions_integrity.py` passing with 100% success.
 
+## Item 15 — Shared Workspaces & Collections (Phase 8 Item 1)
+- [Implemented] Database migration `migrations/035_collections_workspaces.sql` creating `collections`, `collection_documents`, and `collection_memberships` tables
+- [Implemented] Sub-tenant isolation service `src/knowledgeforge/collections/service.py` with membership checks, private collection gating, and CRUD operations
+- [Implemented] SQL-level scoping in `retrieve_chunks`, `list_documents`, and `get_document_detail` enforcing collection membership in WHERE clauses
+- [Implemented] API endpoints `/collections`, `/collections/{id}`, `/collections/{id}/documents`, `/collections/{id}/members` in `src/knowledgeforge/api.py`
+- [Verified] Unit test suite `tests/unit/test_collections_isolation.py` proving non-member tenant users cannot view or retrieve documents in private collections
+
+## Item 16 — Knowledge Graph Visualizer Frontend (Phase 8 Item 2)
+- [Implemented] HTML/SVG interactive explorer endpoint `GET /graph/view` in `src/knowledgeforge/api.py` rendering nodes and edges
+- [Implemented] Strict `Content-Security-Policy` header with cryptographic nonce binding and `frame-ancestors 'none'`
+- [Implemented] Front-end consumes existing audited `/graph/query` recursive traversal endpoint unchanged without modifying backend traversal CTE
+- [Verified] Unit test suite `tests/unit/test_graph_view.py` verifying HTML output, CSP nonce matching, authentication requirement, and `/graph/query` dispatch
+
+## Item 17 — Recurring Activity Digests (Phase 8 Item 3)
+- [Implemented] Database migration `migrations/036_playbooks_and_digests.sql` defining `tenant_digest_settings`
+- [Implemented] Transactional digest email dispatch in `src/knowledgeforge/security/mailer.py` (`send_digest_email`)
+- [Implemented] Periodic aggregation job `src/knowledgeforge/worker/digest_job.py` calculating ingested, extracted, failed, and query counts
+- [Implemented] Cloud Run Job `google_cloud_run_v2_job.digest` and Cloud Scheduler trigger `google_cloud_scheduler_job.recurring_digest` in `infrastructure/terraform/main.tf`
+- [Implemented] Settings endpoints `GET /tenant/digest`, `PUT /tenant/digest`, and `POST /tenant/digest/trigger` in `src/knowledgeforge/api.py`
+- [Verified] Unit test suite `tests/unit/test_recurring_digests.py` verifying aggregation metrics, frequency gating, and recipient delivery
+
+## Item 18 — Document Drafting from Grounded Context (Phase 8 Item 4)
+- [Implemented] Document drafting engine `src/knowledgeforge/generation/drafting.py` with structured drafting system prompt, prompt injection quotation defense, and inline citation parsing
+- [Implemented] Token accounting with upfront reservation and reconciliation via `RedisBudgetCounter`
+- [Implemented] Strict invariant: generated drafts are never automatically re-ingested into `documents` table
+- [Implemented] Endpoint `POST /ask/draft` in `src/knowledgeforge/api.py`
+- [Verified] Unit test suite `tests/unit/test_drafting_budget.py` verifying grounding, token accounting, 429 budget rejection, and zero insertion into documents table
+
+## Item 19 — Auto-Clustering and Tagging Engine (Phase 8 Item 5)
+- [Implemented] Database migration `migrations/038_clustering_widgets_mobile.sql` adding `document_clusters` and `document_tags` tables
+- [Implemented] Mean-pooling embedding aggregation and cosine clustering in `src/knowledgeforge/clustering/engine.py`
+- [Implemented] Human-in-the-loop review workflow: clusters saved as `suggested` and require explicit confirmation (`confirm_cluster`) or dismissal (`dismiss_cluster`)
+- [Implemented] Endpoints `POST /clusters/generate`, `GET /clusters`, `POST /clusters/{id}/confirm`, `POST /clusters/{id}/dismiss` in `src/knowledgeforge/api.py`
+- [Verified] Unit test suite `tests/unit/test_clustering_tagging.py` verifying mean-pooling, pending state generation, and human confirmation requirement
+
+## Item 20 — Saved Playbooks Engine (Phase 8 Item 6)
+- [Implemented] Database migration `migrations/036_playbooks_and_digests.sql` creating `playbooks` and `playbook_runs` tables
+- [Implemented] Playbook execution runner `src/knowledgeforge/playbooks/runner.py` with upfront token budget reservation per question and automatic execution against matching doc_type
+- [Implemented] Endpoints `POST /playbooks`, `GET /playbooks`, `GET /documents/{id}/playbooks`, `POST /documents/{id}/playbooks/run` in `src/knowledgeforge/api.py`
+- [Verified] Unit test suite `tests/unit/test_playbooks_budget.py` verifying question sets, upfront reservation, failure on budget exhaustion, and result persistence
+
+## Item 21 — Multi-Step Approval Workflows & DB Invariants (Phase 8 Item 7)
+- [Implemented] Database migration `migrations/037_document_approvals.sql` defining `approval_chains`, `approval_instances`, `approval_actions`, and database triggers `trg_enforce_approval_completion` and `trg_enforce_document_finalization`
+- [Implemented] State machine engine `src/knowledgeforge/approvals/service.py` with row-level locking (`FOR UPDATE OF ai`) and step progression
+- [Implemented] Endpoints `POST /approvals/chains`, `POST /documents/{id}/approvals/start`, `POST /approvals/{instance_id}/act`, `GET /documents/{id}/approvals` in `src/knowledgeforge/api.py`
+- [Verified] Unit test suite `tests/unit/test_approval_invariants.py` verifying multi-step progression, reject flow, owner-only authorization, concurrent collision prevention, and trigger invariants
+
+## Item 22 — Multilingual Ingestion & Cross-Lingual Retrieval (Phase 8 Item 8)
+- [Implemented] Cross-lingual prompt instruction in `src/knowledgeforge/generation/prompt.py` directing answers in query language with citations in source language
+- [Implemented] Multilingual golden set benchmark `evaluation/multilingual-golden-set.json` covering DE->EN, ES->EN, JA->EN queries and documents
+- [Implemented] Multilingual evaluation harness `evaluation/run_multilingual_eval.py`
+- [Verified] Unit test suite `tests/unit/test_multilingual_retrieval.py` and evaluation runner executing with 100% Hit@1 and 100% citation accuracy across all language pairs
+
+## Item 23 — Embeddable White-Label Widget (Phase 8 Item 9)
+- [Implemented] Database migration `migrations/038_clustering_widgets_mobile.sql` defining `tenant_widgets`
+- [Implemented] Strict CORS origin validation `validate_widget_origin` prohibiting wildcard `*` origins and suffix spoofing in `src/knowledgeforge/widget/service.py`
+- [Implemented] Dedicated per-widget / per-IP rate limiter with `TokenBucketLimiter` defending against DDoS spikes
+- [Implemented] Endpoints `POST /widgets`, `GET /widgets`, `GET /widgets/{id}/embed.js`, `POST /widget/ask` strictly scoped to widget's `collection_id`
+- [Verified] Unit test suite `tests/unit/test_widget_security.py` verifying origin rejection, rate limiting 429 response, and embed script isolation
+
+## Item 24 — Mobile App Device Lifecycle & Token Rotation (Phase 8 Item 10)
+- [Implemented] Database migration `migrations/038_clustering_widgets_mobile.sql` defining `user_devices`
+- [Implemented] Push notification channel abstraction `src/knowledgeforge/mobile/notifications.py` (`MockPushNotificationProvider`, `register_user_device`, `unregister_user_device`, `notify_user_devices`)
+- [Implemented] Endpoints `POST /devices/register`, `POST /devices/unregister` in `src/knowledgeforge/api.py`
+- [Implemented] Refresh-token rotation supporting long-lived background/resume sessions in `src/knowledgeforge/security/refresh.py`
+- [Verified] Unit test suite `tests/unit/test_mobile_lifecycle.py` verifying device registration, push dispatch, token rotation, and replay detection family revocation
+- [Verified] Round 7 Adversarial Audit suite `tests/unit/test_round7_adversarial_audit.py` verifying zero trust boundary leaks across all Phase 8 features
+
+
 

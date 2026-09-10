@@ -1,6 +1,40 @@
 {
   "components": {
     "schemas": {
+      "AddCollectionDocumentRequest": {
+        "properties": {
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id"
+        ],
+        "title": "AddCollectionDocumentRequest",
+        "type": "object"
+      },
+      "AddCollectionMemberRequest": {
+        "properties": {
+          "role": {
+            "default": "viewer",
+            "pattern": "^(viewer|editor|admin)$",
+            "title": "Role",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "AddCollectionMemberRequest",
+        "type": "object"
+      },
       "AdminDLQResponse": {
         "properties": {
           "extraction_dlq_depth": {
@@ -274,8 +308,136 @@
         "title": "ApiKeyListedResponse",
         "type": "object"
       },
+      "ApprovalActionRequest": {
+        "properties": {
+          "action": {
+            "pattern": "^(approve|reject)$",
+            "title": "Action",
+            "type": "string"
+          },
+          "comments": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comments"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "ApprovalActionRequest",
+        "type": "object"
+      },
+      "ApprovalChainResponse": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "steps",
+          "created_at"
+        ],
+        "title": "ApprovalChainResponse",
+        "type": "object"
+      },
+      "ApprovalInstanceResponse": {
+        "properties": {
+          "chain_id": {
+            "format": "uuid",
+            "title": "Chain Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_step_index": {
+            "title": "Current Step Index",
+            "type": "integer"
+          },
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "total_steps": {
+            "title": "Total Steps",
+            "type": "integer"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "document_id",
+          "chain_id",
+          "current_step_index",
+          "total_steps",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ApprovalInstanceResponse",
+        "type": "object"
+      },
       "AskRequest": {
         "properties": {
+          "collection_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Id"
+          },
           "conversation_id": {
             "anyOf": [
               {
@@ -779,6 +941,133 @@
         "title": "ClauseDiffResponse",
         "type": "object"
       },
+      "ClusterResponse": {
+        "properties": {
+          "confirmed_collection_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Collection Id"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "document_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Document Ids",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "suggested_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggested Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "document_ids",
+          "suggested_tags",
+          "status",
+          "confirmed_collection_id",
+          "created_at"
+        ],
+        "title": "ClusterResponse",
+        "type": "object"
+      },
+      "CollectionResponse": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_private": {
+            "title": "Is Private",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "description",
+          "is_private",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CollectionResponse",
+        "type": "object"
+      },
+      "ConfirmClusterRequest": {
+        "properties": {
+          "apply_tags": {
+            "default": true,
+            "title": "Apply Tags",
+            "type": "boolean"
+          },
+          "create_collection": {
+            "default": true,
+            "title": "Create Collection",
+            "type": "boolean"
+          }
+        },
+        "title": "ConfirmClusterRequest",
+        "type": "object"
+      },
       "ConflictResolveRequest": {
         "properties": {
           "status": {
@@ -941,6 +1230,111 @@
         "title": "ConversationSummary",
         "type": "object"
       },
+      "CreateApprovalChainRequest": {
+        "properties": {
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "minItems": 1,
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "steps"
+        ],
+        "title": "CreateApprovalChainRequest",
+        "type": "object"
+      },
+      "CreateCollectionRequest": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "is_private": {
+            "default": true,
+            "title": "Is Private",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreateCollectionRequest",
+        "type": "object"
+      },
+      "CreatePlaybookRequest": {
+        "properties": {
+          "doc_type": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc Type"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "questions": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Questions",
+            "type": "array"
+          },
+          "schema_type": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Type"
+          }
+        },
+        "required": [
+          "name",
+          "questions"
+        ],
+        "title": "CreatePlaybookRequest",
+        "type": "object"
+      },
       "CreateWebhookRequest": {
         "properties": {
           "events": {
@@ -972,6 +1366,61 @@
         "title": "CreateWebhookRequest",
         "type": "object"
       },
+      "CreateWidgetRequest": {
+        "properties": {
+          "allowed_origins": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Allowed Origins",
+            "type": "array"
+          },
+          "api_key_id": {
+            "format": "uuid",
+            "title": "Api Key Id",
+            "type": "string"
+          },
+          "collection_id": {
+            "format": "uuid",
+            "title": "Collection Id",
+            "type": "string"
+          },
+          "daily_budget_tokens": {
+            "default": 50000,
+            "minimum": 100.0,
+            "title": "Daily Budget Tokens",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "primary_color": {
+            "default": "#2563eb",
+            "maxLength": 20,
+            "title": "Primary Color",
+            "type": "string"
+          },
+          "rate_limit_per_minute": {
+            "default": 30,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Rate Limit Per Minute",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "collection_id",
+          "api_key_id",
+          "name",
+          "allowed_origins"
+        ],
+        "title": "CreateWidgetRequest",
+        "type": "object"
+      },
       "CustomerPortalRequest": {
         "description": "Request to create a Stripe Customer Portal session.",
         "properties": {
@@ -998,6 +1447,113 @@
           "url"
         ],
         "title": "CustomerPortalResponse",
+        "type": "object"
+      },
+      "DeviceResponse": {
+        "properties": {
+          "device_token": {
+            "title": "Device Token",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "last_seen_at": {
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "platform",
+          "device_token",
+          "is_active",
+          "last_seen_at"
+        ],
+        "title": "DeviceResponse",
+        "type": "object"
+      },
+      "DigestSettingsRequest": {
+        "properties": {
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "frequency": {
+            "default": "daily",
+            "pattern": "^(daily|weekly|none)$",
+            "title": "Frequency",
+            "type": "string"
+          },
+          "recipient_emails": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recipient Emails",
+            "type": "array"
+          }
+        },
+        "title": "DigestSettingsRequest",
+        "type": "object"
+      },
+      "DigestSettingsResponse": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "frequency": {
+            "title": "Frequency",
+            "type": "string"
+          },
+          "last_sent_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sent At"
+          },
+          "recipient_emails": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recipient Emails",
+            "type": "array"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "frequency",
+          "enabled",
+          "recipient_emails",
+          "last_sent_at",
+          "updated_at"
+        ],
+        "title": "DigestSettingsResponse",
         "type": "object"
       },
       "DocumentChunkItem": {
@@ -1352,6 +1908,112 @@
           "document_id"
         ],
         "title": "DocumentUploadResponse",
+        "type": "object"
+      },
+      "DraftRequest": {
+        "properties": {
+          "collection_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Id"
+          },
+          "document_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Ids"
+          },
+          "document_type": {
+            "default": "memo",
+            "maxLength": 50,
+            "title": "Document Type",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "user_instructions": {
+            "default": "",
+            "maxLength": 5000,
+            "title": "User Instructions",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "DraftRequest",
+        "type": "object"
+      },
+      "DraftResponse": {
+        "properties": {
+          "citations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "document_type": {
+            "title": "Document Type",
+            "type": "string"
+          },
+          "grounded": {
+            "title": "Grounded",
+            "type": "boolean"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total_tokens": {
+            "title": "Total Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "title",
+          "document_type",
+          "content",
+          "citations",
+          "grounded",
+          "input_tokens",
+          "output_tokens",
+          "total_tokens"
+        ],
+        "title": "DraftResponse",
         "type": "object"
       },
       "DynamicSchemaCreateRequest": {
@@ -2103,6 +2765,140 @@
         "title": "NaturalFilterResponse",
         "type": "object"
       },
+      "PlaybookResponse": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "doc_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doc Type"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "questions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "schema_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Type"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "doc_type",
+          "schema_type",
+          "questions",
+          "is_active",
+          "created_at"
+        ],
+        "title": "PlaybookResponse",
+        "type": "object"
+      },
+      "PlaybookRunResponse": {
+        "properties": {
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "citations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "playbook_id": {
+            "format": "uuid",
+            "title": "Playbook Id",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tokens_used": {
+            "title": "Tokens Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "playbook_id",
+          "document_id",
+          "question",
+          "answer",
+          "citations",
+          "status",
+          "tokens_used",
+          "created_at"
+        ],
+        "title": "PlaybookRunResponse",
+        "type": "object"
+      },
       "RefreshRequest": {
         "properties": {
           "refresh_token": {
@@ -2116,6 +2912,27 @@
           "refresh_token"
         ],
         "title": "RefreshRequest",
+        "type": "object"
+      },
+      "RegisterDeviceRequest": {
+        "properties": {
+          "device_token": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Device Token",
+            "type": "string"
+          },
+          "platform": {
+            "pattern": "^(ios|android|web_push)$",
+            "title": "Platform",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "device_token"
+        ],
+        "title": "RegisterDeviceRequest",
         "type": "object"
       },
       "RegisterRequest": {
@@ -2513,6 +3330,20 @@
           "role"
         ],
         "title": "SSOLoginResponse",
+        "type": "object"
+      },
+      "StartApprovalRequest": {
+        "properties": {
+          "chain_id": {
+            "format": "uuid",
+            "title": "Chain Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_id"
+        ],
+        "title": "StartApprovalRequest",
         "type": "object"
       },
       "StructuredFilters": {
@@ -3275,6 +4106,107 @@
           "created_at"
         ],
         "title": "WebhookResponse",
+        "type": "object"
+      },
+      "WidgetAskRequest": {
+        "properties": {
+          "question": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "WidgetAskRequest",
+        "type": "object"
+      },
+      "WidgetAskResponse": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Citations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "answer",
+          "citations"
+        ],
+        "title": "WidgetAskResponse",
+        "type": "object"
+      },
+      "WidgetResponse": {
+        "properties": {
+          "allowed_origins": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Origins",
+            "type": "array"
+          },
+          "api_key_id": {
+            "format": "uuid",
+            "title": "Api Key Id",
+            "type": "string"
+          },
+          "collection_id": {
+            "format": "uuid",
+            "title": "Collection Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "daily_budget_tokens": {
+            "title": "Daily Budget Tokens",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "primary_color": {
+            "title": "Primary Color",
+            "type": "string"
+          },
+          "rate_limit_per_minute": {
+            "title": "Rate Limit Per Minute",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "collection_id",
+          "api_key_id",
+          "name",
+          "allowed_origins",
+          "primary_color",
+          "rate_limit_per_minute",
+          "daily_budget_tokens",
+          "is_active",
+          "created_at"
+        ],
+        "title": "WidgetResponse",
         "type": "object"
       }
     },
@@ -4478,6 +5410,67 @@
         "summary": "Remove Api Key"
       }
     },
+    "/approvals/chains": {
+      "post": {
+        "operationId": "create_chain_approvals_chains_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApprovalChainRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalChainResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Chain"
+      }
+    },
     "/ask": {
       "post": {
         "operationId": "ask_ask_post",
@@ -4537,6 +5530,67 @@
           }
         ],
         "summary": "Ask"
+      }
+    },
+    "/ask/draft": {
+      "post": {
+        "operationId": "draft_document_from_context_ask_draft_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Draft Document From Context"
       }
     },
     "/ask/stream": {
@@ -5228,6 +6282,709 @@
         "summary": "Stripe Webhook"
       }
     },
+    "/clusters": {
+      "get": {
+        "operationId": "list_clusters_clusters_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClusterResponse"
+                  },
+                  "title": "Response List Clusters Clusters Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Clusters"
+      }
+    },
+    "/clusters/generate": {
+      "post": {
+        "operationId": "generate_clusters_clusters_generate_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "similarity_threshold",
+            "required": false,
+            "schema": {
+              "default": 0.7,
+              "title": "Similarity Threshold",
+              "type": "number"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClusterResponse"
+                  },
+                  "title": "Response Generate Clusters Clusters Generate Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Generate Clusters"
+      }
+    },
+    "/clusters/{cluster_id}/confirm": {
+      "post": {
+        "operationId": "confirm_suggested_cluster_clusters__cluster_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cluster_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cluster Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmClusterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Confirm Suggested Cluster Clusters  Cluster Id  Confirm Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Confirm Suggested Cluster"
+      }
+    },
+    "/clusters/{cluster_id}/dismiss": {
+      "post": {
+        "operationId": "dismiss_suggested_cluster_clusters__cluster_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cluster_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cluster Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Dismiss Suggested Cluster Clusters  Cluster Id  Dismiss Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dismiss Suggested Cluster"
+      }
+    },
+    "/collections": {
+      "get": {
+        "operationId": "list_tenant_collections_collections_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CollectionResponse"
+                  },
+                  "title": "Response List Tenant Collections Collections Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Tenant Collections"
+      },
+      "post": {
+        "operationId": "create_new_collection_collections_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCollectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create New Collection"
+      }
+    },
+    "/collections/{collection_id}": {
+      "get": {
+        "operationId": "get_collection_detail_collections__collection_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Collection Detail"
+      }
+    },
+    "/collections/{collection_id}/documents": {
+      "post": {
+        "operationId": "add_doc_to_collection_collections__collection_id__documents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCollectionDocumentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Doc To Collection"
+      }
+    },
+    "/collections/{collection_id}/documents/{document_id}": {
+      "delete": {
+        "operationId": "remove_doc_from_collection_collections__collection_id__documents__document_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Doc From Collection"
+      }
+    },
+    "/collections/{collection_id}/members": {
+      "post": {
+        "operationId": "add_member_to_collection_collections__collection_id__members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCollectionMemberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Member To Collection"
+      }
+    },
+    "/collections/{collection_id}/members/{user_id}": {
+      "delete": {
+        "operationId": "remove_member_from_collection_collections__collection_id__members__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Member From Collection"
+      }
+    },
     "/conversations": {
       "get": {
         "operationId": "conversations_conversations_get",
@@ -5474,10 +7231,141 @@
         "summary": "Conversation Detail"
       }
     },
+    "/devices/register": {
+      "post": {
+        "operationId": "register_device_devices_register_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register Device"
+      }
+    },
+    "/devices/unregister": {
+      "post": {
+        "operationId": "unregister_device_devices_unregister_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device_token",
+            "required": true,
+            "schema": {
+              "title": "Device Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unregister Device"
+      }
+    },
     "/documents": {
       "get": {
         "operationId": "documents_documents_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "collection_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Collection Id"
+            }
+          },
           {
             "in": "query",
             "name": "limit",
@@ -5846,6 +7734,223 @@
           }
         ],
         "summary": "Document Detail"
+      }
+    },
+    "/documents/{document_id}/approvals": {
+      "get": {
+        "operationId": "get_approvals_documents__document_id__approvals_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApprovalInstanceResponse"
+                  },
+                  "title": "Response Get Approvals Documents  Document Id  Approvals Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Approvals"
+      }
+    },
+    "/documents/{document_id}/approvals/action": {
+      "post": {
+        "operationId": "act_on_approval_documents__document_id__approvals_action_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "instance_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Instance Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalInstanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Act On Approval"
+      }
+    },
+    "/documents/{document_id}/approvals/start": {
+      "post": {
+        "operationId": "start_approval_documents__document_id__approvals_start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalInstanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Approval"
       }
     },
     "/documents/{document_id}/chunks": {
@@ -6274,6 +8379,136 @@
           }
         ],
         "summary": "Get Page Highlights"
+      }
+    },
+    "/documents/{document_id}/playbooks": {
+      "get": {
+        "operationId": "get_document_playbooks_documents__document_id__playbooks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlaybookRunResponse"
+                  },
+                  "title": "Response Get Document Playbooks Documents  Document Id  Playbooks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Document Playbooks"
+      }
+    },
+    "/documents/{document_id}/playbooks/run": {
+      "post": {
+        "operationId": "run_playbooks_for_doc_documents__document_id__playbooks_run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlaybookRunResponse"
+                  },
+                  "title": "Response Run Playbooks For Doc Documents  Document Id  Playbooks Run Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Run Playbooks For Doc"
       }
     },
     "/documents/{document_id}/reingest": {
@@ -6841,6 +9076,57 @@
         "summary": "Query Graph"
       }
     },
+    "/graph/view": {
+      "get": {
+        "operationId": "graph_view_html_graph_view_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Graph View Html"
+      }
+    },
     "/health": {
       "get": {
         "description": "Return a lightweight liveness response without checking dependencies.",
@@ -7244,6 +9530,120 @@
           }
         ],
         "summary": "Update Member Role"
+      }
+    },
+    "/playbooks": {
+      "get": {
+        "operationId": "list_tenant_playbooks_playbooks_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlaybookResponse"
+                  },
+                  "title": "Response List Tenant Playbooks Playbooks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Tenant Playbooks"
+      },
+      "post": {
+        "operationId": "create_new_playbook_playbooks_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlaybookRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create New Playbook"
       }
     },
     "/privacy/mask": {
@@ -7681,6 +10081,179 @@
         "tags": [
           "tenant"
         ]
+      }
+    },
+    "/tenant/digest": {
+      "get": {
+        "operationId": "get_digest_settings_tenant_digest_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Digest Settings"
+      },
+      "put": {
+        "operationId": "update_digest_settings_tenant_digest_put",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DigestSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Digest Settings"
+      }
+    },
+    "/tenant/digest/trigger": {
+      "post": {
+        "operationId": "trigger_digest_delivery_tenant_digest_trigger_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Dry Run",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Trigger Digest Delivery Tenant Digest Trigger Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Trigger Digest Delivery"
       }
     },
     "/tenant/settings": {
@@ -9340,6 +11913,67 @@
         "summary": "Remove Api Key"
       }
     },
+    "/v1/approvals/chains": {
+      "post": {
+        "operationId": "create_chain_v1_approvals_chains_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApprovalChainRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalChainResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Chain"
+      }
+    },
     "/v1/ask": {
       "post": {
         "operationId": "ask_v1_ask_post",
@@ -9399,6 +12033,67 @@
           }
         ],
         "summary": "Ask"
+      }
+    },
+    "/v1/ask/draft": {
+      "post": {
+        "operationId": "draft_document_from_context_v1_ask_draft_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Draft Document From Context"
       }
     },
     "/v1/ask/stream": {
@@ -10090,6 +12785,709 @@
         "summary": "Stripe Webhook"
       }
     },
+    "/v1/clusters": {
+      "get": {
+        "operationId": "list_clusters_v1_clusters_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClusterResponse"
+                  },
+                  "title": "Response List Clusters V1 Clusters Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Clusters"
+      }
+    },
+    "/v1/clusters/generate": {
+      "post": {
+        "operationId": "generate_clusters_v1_clusters_generate_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "similarity_threshold",
+            "required": false,
+            "schema": {
+              "default": 0.7,
+              "title": "Similarity Threshold",
+              "type": "number"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClusterResponse"
+                  },
+                  "title": "Response Generate Clusters V1 Clusters Generate Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Generate Clusters"
+      }
+    },
+    "/v1/clusters/{cluster_id}/confirm": {
+      "post": {
+        "operationId": "confirm_suggested_cluster_v1_clusters__cluster_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cluster_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cluster Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmClusterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Confirm Suggested Cluster V1 Clusters  Cluster Id  Confirm Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Confirm Suggested Cluster"
+      }
+    },
+    "/v1/clusters/{cluster_id}/dismiss": {
+      "post": {
+        "operationId": "dismiss_suggested_cluster_v1_clusters__cluster_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cluster_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cluster Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Dismiss Suggested Cluster V1 Clusters  Cluster Id  Dismiss Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dismiss Suggested Cluster"
+      }
+    },
+    "/v1/collections": {
+      "get": {
+        "operationId": "list_tenant_collections_v1_collections_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CollectionResponse"
+                  },
+                  "title": "Response List Tenant Collections V1 Collections Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Tenant Collections"
+      },
+      "post": {
+        "operationId": "create_new_collection_v1_collections_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCollectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create New Collection"
+      }
+    },
+    "/v1/collections/{collection_id}": {
+      "get": {
+        "operationId": "get_collection_detail_v1_collections__collection_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Collection Detail"
+      }
+    },
+    "/v1/collections/{collection_id}/documents": {
+      "post": {
+        "operationId": "add_doc_to_collection_v1_collections__collection_id__documents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCollectionDocumentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Doc To Collection"
+      }
+    },
+    "/v1/collections/{collection_id}/documents/{document_id}": {
+      "delete": {
+        "operationId": "remove_doc_from_collection_v1_collections__collection_id__documents__document_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Doc From Collection"
+      }
+    },
+    "/v1/collections/{collection_id}/members": {
+      "post": {
+        "operationId": "add_member_to_collection_v1_collections__collection_id__members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCollectionMemberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Member To Collection"
+      }
+    },
+    "/v1/collections/{collection_id}/members/{user_id}": {
+      "delete": {
+        "operationId": "remove_member_from_collection_v1_collections__collection_id__members__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Member From Collection"
+      }
+    },
     "/v1/conversations": {
       "get": {
         "operationId": "conversations_v1_conversations_get",
@@ -10336,10 +13734,141 @@
         "summary": "Conversation Detail"
       }
     },
+    "/v1/devices/register": {
+      "post": {
+        "operationId": "register_device_v1_devices_register_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register Device"
+      }
+    },
+    "/v1/devices/unregister": {
+      "post": {
+        "operationId": "unregister_device_v1_devices_unregister_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "device_token",
+            "required": true,
+            "schema": {
+              "title": "Device Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unregister Device"
+      }
+    },
     "/v1/documents": {
       "get": {
         "operationId": "documents_v1_documents_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "collection_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Collection Id"
+            }
+          },
           {
             "in": "query",
             "name": "limit",
@@ -10708,6 +14237,223 @@
           }
         ],
         "summary": "Document Detail"
+      }
+    },
+    "/v1/documents/{document_id}/approvals": {
+      "get": {
+        "operationId": "get_approvals_v1_documents__document_id__approvals_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApprovalInstanceResponse"
+                  },
+                  "title": "Response Get Approvals V1 Documents  Document Id  Approvals Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Approvals"
+      }
+    },
+    "/v1/documents/{document_id}/approvals/action": {
+      "post": {
+        "operationId": "act_on_approval_v1_documents__document_id__approvals_action_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "instance_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Instance Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalInstanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Act On Approval"
+      }
+    },
+    "/v1/documents/{document_id}/approvals/start": {
+      "post": {
+        "operationId": "start_approval_v1_documents__document_id__approvals_start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalInstanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Approval"
       }
     },
     "/v1/documents/{document_id}/chunks": {
@@ -11136,6 +14882,136 @@
           }
         ],
         "summary": "Get Page Highlights"
+      }
+    },
+    "/v1/documents/{document_id}/playbooks": {
+      "get": {
+        "operationId": "get_document_playbooks_v1_documents__document_id__playbooks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlaybookRunResponse"
+                  },
+                  "title": "Response Get Document Playbooks V1 Documents  Document Id  Playbooks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Document Playbooks"
+      }
+    },
+    "/v1/documents/{document_id}/playbooks/run": {
+      "post": {
+        "operationId": "run_playbooks_for_doc_v1_documents__document_id__playbooks_run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlaybookRunResponse"
+                  },
+                  "title": "Response Run Playbooks For Doc V1 Documents  Document Id  Playbooks Run Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Run Playbooks For Doc"
       }
     },
     "/v1/documents/{document_id}/reingest": {
@@ -11703,6 +15579,57 @@
         "summary": "Query Graph"
       }
     },
+    "/v1/graph/view": {
+      "get": {
+        "operationId": "graph_view_html_v1_graph_view_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Graph View Html"
+      }
+    },
     "/v1/ingestions/failed": {
       "get": {
         "operationId": "failed_ingestions_v1_ingestions_failed_get",
@@ -12080,6 +16007,120 @@
           }
         ],
         "summary": "Update Member Role"
+      }
+    },
+    "/v1/playbooks": {
+      "get": {
+        "operationId": "list_tenant_playbooks_v1_playbooks_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlaybookResponse"
+                  },
+                  "title": "Response List Tenant Playbooks V1 Playbooks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Tenant Playbooks"
+      },
+      "post": {
+        "operationId": "create_new_playbook_v1_playbooks_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlaybookRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create New Playbook"
       }
     },
     "/v1/privacy/mask": {
@@ -12517,6 +16558,179 @@
         "tags": [
           "tenant"
         ]
+      }
+    },
+    "/v1/tenant/digest": {
+      "get": {
+        "operationId": "get_digest_settings_v1_tenant_digest_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Digest Settings"
+      },
+      "put": {
+        "operationId": "update_digest_settings_v1_tenant_digest_put",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DigestSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigestSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Digest Settings"
+      }
+    },
+    "/v1/tenant/digest/trigger": {
+      "post": {
+        "operationId": "trigger_digest_delivery_v1_tenant_digest_trigger_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Dry Run",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Trigger Digest Delivery V1 Tenant Digest Trigger Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Trigger Digest Delivery"
       }
     },
     "/v1/tenant/settings": {
@@ -12988,6 +17202,272 @@
         "tags": [
           "webhooks"
         ]
+      }
+    },
+    "/v1/widget/ask": {
+      "post": {
+        "description": "Public-facing widget Q&A query with strict origin and collection scoping.",
+        "operationId": "widget_ask_v1_widget_ask_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WidgetAskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetAskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Widget Ask"
+      }
+    },
+    "/v1/widget/embed.js": {
+      "get": {
+        "operationId": "get_widget_embed_script_v1_widget_embed_js_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "widget_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Widget Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Widget Embed Script"
+      }
+    },
+    "/v1/widgets": {
+      "post": {
+        "operationId": "create_widget_v1_widgets_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWidgetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Widget"
+      }
+    },
+    "/widget/ask": {
+      "post": {
+        "description": "Public-facing widget Q&A query with strict origin and collection scoping.",
+        "operationId": "widget_ask_widget_ask_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WidgetAskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetAskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Widget Ask"
+      }
+    },
+    "/widget/embed.js": {
+      "get": {
+        "operationId": "get_widget_embed_script_widget_embed_js_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "widget_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Widget Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Widget Embed Script"
+      }
+    },
+    "/widgets": {
+      "post": {
+        "operationId": "create_widget_widgets_post",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "kf_access_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kf Access Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWidgetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Widget"
       }
     }
   }

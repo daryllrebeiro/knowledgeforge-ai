@@ -6,6 +6,8 @@ locals {
   scheduler_job_name          = "knowledgeforge-outbox-scheduler-${var.environment}"
   purge_job_name              = "knowledgeforge-purge-${var.environment}"
   purge_scheduler_job_name    = "knowledgeforge-purge-scheduler-${var.environment}"
+  digest_job_name             = "knowledgeforge-digest-${var.environment}"
+  digest_scheduler_job_name   = "knowledgeforge-digest-scheduler-${var.environment}"
   ingestion_topic             = "knowledgeforge-ingestion-${var.environment}"
   dlq_topic                   = "knowledgeforge-ingestion-dead-letter-${var.environment}"
   worker_subscription         = "knowledgeforge-ingestion-worker-${var.environment}"
@@ -798,6 +800,52 @@ resource "google_cloud_run_v2_job" "purge" {
   ]
 }
 
+# Recurring periodic digest job: Cloud Run Job (Phase 8 Item 3)
+resource "google_cloud_run_v2_job" "digest" {
+  name     = local.digest_job_name
+  location = var.region
+
+  template {
+    template {
+      service_account = google_service_account.outbox.email
+      containers {
+        image   = var.worker_image
+        command = ["python", "-m", "knowledgeforge.worker.digest_job"]
+        resources {
+          limits = {
+            cpu    = "1"
+            memory = "512Mi"
+          }
+        }
+        env {
+          name  = "ENVIRONMENT"
+          value = "production"
+        }
+        env {
+          name  = "GCP_PROJECT_ID"
+          value = var.project_id
+        }
+        env {
+          name = "DATABASE_URL"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.database_url.secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [
+    google_project_service.enabled,
+    google_secret_manager_secret_iam_member.outbox_database_url,
+    google_project_iam_member.outbox_cloudsql_client,
+  ]
+}
+
+
 # ---------------------------------------------------------------------------
 # Phase 2.5 IAM: extraction/outbox/scheduler identities.
 # ---------------------------------------------------------------------------
@@ -901,6 +949,32 @@ resource "google_cloud_scheduler_job" "purge_unverified" {
 
   http_target {
     uri         = "https://${var.region}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${var.project_id}/jobs/${google_cloud_run_v2_job.purge.name}:run"
+    http_method = "POST"
+    oauth_token {
+      service_account_email = google_service_account.scheduler.email
+    }
+  }
+
+  depends_on = [google_project_service.enabled]
+}
+
+# The scheduler identity executes the digest Cloud Run Job (Phase 8 Item 3).
+resource "google_cloud_run_v2_job_iam_member" "scheduler_digest_invoker" {
+  name     = google_cloud_run_v2_job.digest.name
+  location = var.region
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.scheduler.email}"
+}
+
+resource "google_cloud_scheduler_job" "recurring_digest" {
+  name      = local.digest_scheduler_job_name
+  region    = var.region
+  schedule  = "0 6 * * *"
+  time_zone = "UTC"
+  paused    = false
+
+  http_target {
+    uri         = "https://${var.region}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${var.project_id}/jobs/${google_cloud_run_v2_job.digest.name}:run"
     http_method = "POST"
     oauth_token {
       service_account_email = google_service_account.scheduler.email
