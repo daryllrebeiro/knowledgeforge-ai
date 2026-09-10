@@ -95,11 +95,14 @@ def test_mechanical_check_no_admin_route_gated_by_bare_get_current_user():
     for route in app.routes:
         path = getattr(route, "path", "")
         if path.startswith("/admin"):
-            # Check route dependencies
-            endpoint = getattr(route, "endpoint", None)
             dependant = getattr(route, "dependant", None)
             if dependant is not None:
                 call_dependencies = [d.call for d in dependant.dependencies]
+                for dep in call_dependencies:
+                    assert dep is not auth.get_current_user, (
+                        f"Route '{path}' uses bare 'get_current_user' in dependencies! "
+                        f"All /admin routes must use 'require_owner' or 'require_platform_admin'."
+                    )
                 # Check parameters
                 for param in dependant.params:
                     # If any dependency is bare get_current_user (instead of require_owner or require_platform_admin)

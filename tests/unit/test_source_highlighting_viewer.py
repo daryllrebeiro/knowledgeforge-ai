@@ -8,7 +8,7 @@ import pytest
 from fastapi import HTTPException
 
 from knowledgeforge import api
-from knowledgeforge.ingestion.chunk import TextChunk, chunk_pages
+from knowledgeforge.ingestion.chunk import chunk_pages
 from knowledgeforge.ingestion.store import DocumentContentData
 
 
@@ -64,7 +64,7 @@ def test_get_document_content_endpoint(monkeypatch):
         ],
     )
 
-    def fake_get_content(connection, document_id, tid):
+    def fake_get_content(connection, document_id, tid, **kwargs):
         assert tid == tenant_id
         if document_id == doc_id:
             return fake_data
@@ -115,7 +115,7 @@ def test_get_document_view_html_endpoint(monkeypatch):
         ],
     )
 
-    def fake_get_content(connection, document_id, tid):
+    def fake_get_content(connection, document_id, tid, **kwargs):
         if document_id == doc_id and tid == tenant_id:
             return fake_data
         return None

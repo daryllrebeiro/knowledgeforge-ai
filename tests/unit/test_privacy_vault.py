@@ -142,7 +142,9 @@ def test_vault_db_storage_and_unmask() -> None:
 
 def test_unmask_endpoint_requires_owner_and_logs_audit(monkeypatch) -> None:
     from contextlib import nullcontext
+
     from fastapi.testclient import TestClient
+
     from knowledgeforge import api
     from knowledgeforge.main import app
 
@@ -190,8 +192,10 @@ def test_unmask_endpoint_requires_owner_and_logs_audit(monkeypatch) -> None:
 
 def test_list_vault_endpoint_requires_owner(monkeypatch) -> None:
     from contextlib import nullcontext
+
     from fastapi import HTTPException
     from fastapi.testclient import TestClient
+
     from knowledgeforge import api
     from knowledgeforge.main import app
 
@@ -222,7 +226,9 @@ def test_list_vault_endpoint_requires_owner(monkeypatch) -> None:
 
 def test_mask_endpoint_allows_member(monkeypatch) -> None:
     from contextlib import nullcontext
+
     from fastapi.testclient import TestClient
+
     from knowledgeforge import api
     from knowledgeforge.main import app
 

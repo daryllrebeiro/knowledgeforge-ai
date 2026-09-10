@@ -14,7 +14,6 @@ from knowledgeforge.extraction.query_parser import (
 from knowledgeforge.extraction.store import (
     DocumentExtractionRow,
     list_extractions_with_ranges,
-    find_document_ids_with_ranges,
 )
 
 

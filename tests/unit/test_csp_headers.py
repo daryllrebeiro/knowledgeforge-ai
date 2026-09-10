@@ -8,8 +8,8 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from knowledgeforge.main import app
 from knowledgeforge.ingestion.store import DocumentContentData
+from knowledgeforge.main import app
 from knowledgeforge.security import auth
 
 

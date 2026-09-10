@@ -4,15 +4,12 @@ from contextlib import nullcontext
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-import pytest
-
 from knowledgeforge import api
 from knowledgeforge.config import Settings
 from knowledgeforge.generation.local import local_answer
 from knowledgeforge.generation.prompt import (
     COMPARISON_INSTRUCTION,
     LabeledChunk,
-    LabeledExtraction,
     build_prompt,
 )
 from knowledgeforge.ingestion.chunk import TextChunk

@@ -9,7 +9,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from knowledgeforge.main import app
-from knowledgeforge.security.api_keys import ApiKeyRow, create_api_key, list_api_keys, verify_api_key
+from knowledgeforge.security.api_keys import (
+    create_api_key,
+    verify_api_key,
+)
 
 
 @pytest.fixture
