@@ -110,3 +110,93 @@ def send_verification_email(
             verify_url,
         )
         return True
+
+
+def send_digest_email(
+    to_email: str,
+    *,
+    tenant_name: str,
+    period: str,
+    ingested_count: int,
+    extracted_count: int,
+    failed_count: int,
+    queries_count: int,
+    app_url: str = "http://localhost:8000",
+) -> bool:
+    """Send an activity digest email to a tenant subscriber."""
+    settings = get_settings()
+    subject = f"KnowledgeForge AI: {period.capitalize()} Activity Digest — {tenant_name}"
+    body = (
+        f"Hello,\n\n"
+        f"Here is your {period} KnowledgeForge AI activity summary for tenant '{tenant_name}':\n\n"
+        f"  - Documents Ingested: {ingested_count}\n"
+        f"  - Structured Extractions: {extracted_count}\n"
+        f"  - Failed Ingestions: {failed_count}\n"
+        f"  - Total Queries Served: {queries_count}\n\n"
+        f"View your dashboard at: {app_url.rstrip('/')}/tenant/dashboard\n\n"
+        f"Best regards,\nKnowledgeForge AI Team"
+    )
+
+    record = {
+        "to": to_email,
+        "subject": subject,
+        "type": "digest",
+        "tenant_name": tenant_name,
+        "period": period,
+        "stats": {
+            "ingested_count": ingested_count,
+            "extracted_count": extracted_count,
+            "failed_count": failed_count,
+            "queries_count": queries_count,
+        },
+        "body": body,
+        "provider": settings.email_provider,
+    }
+    _sent_emails.append(record)
+
+    provider = settings.email_provider.lower()
+    if provider == "postmark" and settings.postmark_api_token:
+        try:
+            res = httpx.post(
+                "https://api.postmarkapp.com/email",
+                json={
+                    "From": settings.email_from_address,
+                    "To": to_email,
+                    "Subject": subject,
+                    "TextBody": body,
+                },
+                headers={
+                    "X-Postmark-Server-Token": settings.postmark_api_token,
+                    "Content-Type": "application/json",
+                },
+                timeout=10.0,
+            )
+            res.raise_for_status()
+            return True
+        except Exception:
+            logger.exception("Failed to send digest email via Postmark to %s", to_email)
+            return False
+    elif provider == "sendgrid" and settings.sendgrid_api_key:
+        try:
+            res = httpx.post(
+                "https://api.sendgrid.com/v3/mail/send",
+                json={
+                    "personalizations": [{"to": [{"email": to_email}]}],
+                    "from": {"email": settings.email_from_address},
+                    "subject": subject,
+                    "content": [{"type": "text/plain", "value": body}],
+                },
+                headers={
+                    "Authorization": f"Bearer {settings.sendgrid_api_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=10.0,
+            )
+            res.raise_for_status()
+            return True
+        except Exception:
+            logger.exception("Failed to send digest email via SendGrid to %s", to_email)
+            return False
+    else:
+        logger.info("Digest email logged for %s: %s", to_email, subject)
+        return True

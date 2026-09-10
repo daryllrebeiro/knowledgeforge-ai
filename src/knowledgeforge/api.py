@@ -28,7 +28,12 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 
-from knowledgeforge.admin_ui import ADMIN_HTML
+from knowledgeforge.approvals.service import (
+    create_approval_chain,
+    get_document_approval_instances,
+    process_approval_action,
+    start_document_approval,
+)
 from knowledgeforge.billing import (
     CheckoutSessionRequest,
     CheckoutSessionResponse,
@@ -44,6 +49,22 @@ from knowledgeforge.billing import (
     process_stripe_event,
     update_tenant_tier_admin,
     verify_stripe_signature,
+)
+from knowledgeforge.clustering.engine import (
+    confirm_cluster,
+    dismiss_cluster,
+    generate_suggested_clusters,
+    list_document_clusters,
+)
+from knowledgeforge.collections.service import (
+    add_collection_member,
+    add_document_to_collection,
+    check_user_collection_access,
+    create_collection,
+    get_collection,
+    list_collections,
+    remove_collection_member,
+    remove_document_from_collection,
 )
 from knowledgeforge.config import Settings, get_settings
 from knowledgeforge.conversations import (
@@ -65,14 +86,12 @@ from knowledgeforge.extraction.dynamic_schemas import (
 )
 from knowledgeforge.extraction.query_parser import (
     FilterConfidence,
-    NaturalFilterResult,
     parse_natural_filter,
 )
 from knowledgeforge.extraction.store import (
     DocumentExtractionRow,
     correct_document_extraction,
     find_document_ids_by_fields,
-    find_document_ids_with_ranges,
     get_document_extraction,
     get_extraction_job,
     insert_extraction_job,
@@ -81,6 +100,7 @@ from knowledgeforge.extraction.store import (
     list_extractions_with_ranges,
 )
 from knowledgeforge.generation.condense import rewrite_followup_question
+from knowledgeforge.generation.drafting import generate_draft
 from knowledgeforge.generation.gemini import GeminiTextGenerator, GeminiTextStream
 from knowledgeforge.generation.generate import (
     Citation,
@@ -132,7 +152,17 @@ from knowledgeforge.ingestion.store import (
 )
 from knowledgeforge.limits import RedisTokenBucketLimiter, TokenBucketLimiter
 from knowledgeforge.limits import limiter as default_limiter
+from knowledgeforge.mobile.notifications import (
+    register_user_device,
+    unregister_user_device,
+)
 from knowledgeforge.observability import request_id
+from knowledgeforge.playbooks.runner import (
+    create_playbook,
+    get_document_playbook_results,
+    list_playbooks,
+    trigger_matching_playbooks,
+)
 from knowledgeforge.reliability import (
     CircuitBreaker,
     CircuitOpenError,
@@ -147,6 +177,7 @@ from knowledgeforge.retrieval.table_qa import (
     classify_query_intent,
 )
 from knowledgeforge.security.api_keys import create_api_key, list_api_keys, revoke_api_key
+from knowledgeforge.security.audit import record_audit_log
 from knowledgeforge.security.auth import (
     accept_invitation,
     clear_auth_cookies,
@@ -155,6 +186,7 @@ from knowledgeforge.security.auth import (
     create_email_verification_token,
     create_invitation,
     ensure_owner_remaining,
+    get_current_api_key,
     get_current_user,
     get_user_platform_admin,
     get_user_role_for_tenant,
@@ -173,7 +205,6 @@ from knowledgeforge.security.budget import (
     get_tenant_budget_limits,
     get_token_budget,
 )
-from knowledgeforge.security.audit import record_audit_log
 from knowledgeforge.security.mailer import send_verification_email
 from knowledgeforge.security.privacy_vault import PrivacyVault
 from knowledgeforge.security.refresh import (
@@ -198,8 +229,16 @@ from knowledgeforge.security.webhooks import (
     list_webhooks,
     register_webhook,
 )
+from knowledgeforge.widget.service import (
+    check_widget_rate_limit,
+    create_tenant_widget,
+    generate_embed_js,
+    get_widget_by_api_key,
+    validate_widget_origin,
+)
 from knowledgeforge.worker.auditor import list_conflicts, resolve_conflict
 from knowledgeforge.worker.cloud import CloudStorageClient, PubSubPublisher
+from knowledgeforge.worker.digest_job import run_digest_job
 
 logger = logging.getLogger("knowledgeforge.api")
 
@@ -239,6 +278,8 @@ class AskRequest(BaseModel):
     # Structured-filter pre-step (Phase 2.5): retrieval is scoped to documents
     # with a matching extraction and their extracted fields join the prompt.
     structured_filters: "StructuredFilters | None" = None
+    # Sub-tenant workspace/collection scoping (Phase 8 Item 1)
+    collection_id: UUID | None = None
 
 
 class StructuredFilters(BaseModel):
@@ -708,6 +749,190 @@ class VerifyEmailResponse(BaseModel):
 
 class ResendVerificationRequest(BaseModel):
     email: str
+
+
+# Phase 8 Schemas: Collections, Digests, Drafting, Clustering, Playbooks, Approvals, Widgets, Devices
+
+class CreateCollectionRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
+    is_private: bool = True
+
+
+class CollectionResponse(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    name: str
+    description: str | None
+    is_private: bool
+    created_at: str
+    updated_at: str
+
+
+class AddCollectionDocumentRequest(BaseModel):
+    document_id: UUID
+
+
+class AddCollectionMemberRequest(BaseModel):
+    user_id: UUID
+    role: str = Field(default="viewer", pattern="^(viewer|editor|admin)$")
+
+
+class DigestSettingsRequest(BaseModel):
+    frequency: str = Field(default="daily", pattern="^(daily|weekly|none)$")
+    enabled: bool = False
+    recipient_emails: list[str] = Field(default_factory=list)
+
+
+class DigestSettingsResponse(BaseModel):
+    tenant_id: UUID
+    frequency: str
+    enabled: bool
+    recipient_emails: list[str]
+    last_sent_at: str | None
+    updated_at: str
+
+
+class DraftRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    document_type: str = Field(default="memo", max_length=50)
+    user_instructions: str = Field(default="", max_length=5000)
+    collection_id: UUID | None = None
+    document_ids: list[UUID] | None = None
+
+
+class DraftResponse(BaseModel):
+    title: str
+    document_type: str
+    content: str
+    citations: list[dict[str, Any]]
+    grounded: bool
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+
+
+class ClusterResponse(BaseModel):
+    id: UUID
+    name: str
+    document_ids: list[UUID]
+    suggested_tags: list[str]
+    status: str
+    confirmed_collection_id: UUID | None
+    created_at: str
+
+
+class ConfirmClusterRequest(BaseModel):
+    create_collection: bool = True
+    apply_tags: bool = True
+
+
+class CreatePlaybookRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    questions: list[str] = Field(min_length=1)
+    doc_type: str | None = Field(default=None, max_length=20)
+    schema_type: str | None = Field(default=None, max_length=50)
+
+
+class PlaybookResponse(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    name: str
+    doc_type: str | None
+    schema_type: str | None
+    questions: list[str]
+    is_active: bool
+    created_at: str
+
+
+class PlaybookRunResponse(BaseModel):
+    id: UUID
+    playbook_id: UUID
+    document_id: UUID
+    question: str
+    answer: str | None
+    citations: list[dict[str, Any]]
+    status: str
+    tokens_used: int
+    created_at: str
+
+
+class CreateApprovalChainRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    steps: list[dict[str, Any]] = Field(min_length=1)
+
+
+class ApprovalChainResponse(BaseModel):
+    id: UUID
+    name: str
+    steps: list[dict[str, Any]]
+    created_at: str
+
+
+class StartApprovalRequest(BaseModel):
+    chain_id: UUID
+
+
+class ApprovalActionRequest(BaseModel):
+    action: str = Field(pattern="^(approve|reject)$")
+    comments: str | None = Field(default=None, max_length=1000)
+
+
+class ApprovalInstanceResponse(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    document_id: UUID
+    chain_id: UUID
+    current_step_index: int
+    total_steps: int
+    status: str
+    created_at: str
+    updated_at: str
+
+
+class CreateWidgetRequest(BaseModel):
+    collection_id: UUID
+    api_key_id: UUID
+    name: str = Field(min_length=1, max_length=200)
+    allowed_origins: list[str] = Field(min_length=1)
+    primary_color: str = Field(default="#2563eb", max_length=20)
+    rate_limit_per_minute: int = Field(default=30, ge=1, le=500)
+    daily_budget_tokens: int = Field(default=50000, ge=100)
+
+
+class WidgetResponse(BaseModel):
+    id: UUID
+    collection_id: UUID
+    api_key_id: UUID
+    name: str
+    allowed_origins: list[str]
+    primary_color: str
+    rate_limit_per_minute: int
+    daily_budget_tokens: int
+    is_active: bool
+    created_at: str
+
+
+class WidgetAskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+
+
+class WidgetAskResponse(BaseModel):
+    answer: str
+    citations: list[dict[str, Any]]
+
+
+class RegisterDeviceRequest(BaseModel):
+    platform: str = Field(pattern="^(ios|android|web_push)$")
+    device_token: str = Field(min_length=1, max_length=500)
+
+
+class DeviceResponse(BaseModel):
+    id: UUID
+    platform: str
+    device_token: str
+    is_active: bool
+    last_seen_at: str
 
 
 @router.post("/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -1598,12 +1823,20 @@ def upload_documents_batch(
 
 @router.get("/documents", response_model=DocumentListResponse)
 def documents(
+    collection_id: UUID | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
     current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("read:documents")),
 ) -> DocumentListResponse:
     with get_connection() as connection:
-        rows = list_documents(connection, current_user[1], limit=limit, offset=offset)
+        rows = list_documents(
+            connection,
+            current_user[1],
+            user_id=current_user[0],
+            collection_id=collection_id,
+            limit=limit,
+            offset=offset,
+        )
     return DocumentListResponse(
         documents=[
             DocumentSummary(
@@ -1640,18 +1873,20 @@ def document_detail(
     current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("read:documents")),
 ) -> DocumentDetailResponse:
     with get_connection() as connection:
-        detail = get_document_detail(connection, document_id, current_user[1])
-    if detail is None:
+        doc = get_document_detail(
+            connection, document_id, current_user[1], user_id=current_user[0]
+        )
+    if doc is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return DocumentDetailResponse(
-        document_id=detail.document_id,
-        title=detail.title,
-        filename=detail.filename,
-        doc_type=detail.doc_type,
-        status=detail.status,
-        version=detail.version,
-        superseded_by=UUID(detail.superseded_by) if detail.superseded_by is not None else None,
-        chunk_count=detail.chunk_count,
+        document_id=doc.document_id,
+        title=doc.title,
+        filename=doc.filename,
+        doc_type=doc.doc_type,
+        status=doc.status,
+        version=doc.version,
+        superseded_by=UUID(doc.superseded_by) if doc.superseded_by is not None else None,
+        chunk_count=doc.chunk_count,
     )
 
 
@@ -1665,7 +1900,12 @@ def document_chunks(
     """Preview what was indexed for a document, chunk by chunk (F3)."""
     with get_connection() as connection:
         rows = list_document_chunks(
-            connection, document_id, current_user[1], limit=limit, offset=offset
+            connection,
+            document_id,
+            current_user[1],
+            user_id=current_user[0],
+            limit=limit,
+            offset=offset,
         )
     if rows is None:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -1690,11 +1930,13 @@ def document_chunks(
 def get_page_highlights(
     document_id: UUID,
     page_number: int,
-    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("read:documents")),
 ) -> list[CitationHighlight]:
     """Return all bounding-box highlight geometries for a given document page."""
     with get_connection() as connection:
-        info = get_document_detail(connection, document_id, current_user[1])
+        info = get_document_detail(
+            connection, document_id, current_user[1], user_id=current_user[0]
+        )
         if info is None:
             raise HTTPException(status_code=404, detail="Document not found")
         with connection.cursor() as cursor:
@@ -1724,11 +1966,13 @@ def get_page_highlights(
 @router.get("/documents/{document_id}/content", response_model=DocumentContentResponse)
 def document_content(
     document_id: UUID,
-    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("read:documents")),
 ) -> DocumentContentResponse:
     """Retrieve structured content, page texts, chunks, offsets, and bounding boxes for document viewer."""
     with get_connection() as connection:
-        data = get_document_content_and_chunks(connection, document_id, current_user[1])
+        data = get_document_content_and_chunks(
+            connection, document_id, current_user[1], user_id=current_user[0]
+        )
     if data is None:
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -2022,11 +2266,13 @@ def document_viewer(
     page: Annotated[int, Query(ge=1)] = 1,
     chunk_id: UUID | None = None,
     highlight: Annotated[str | None, Query(max_length=500)] = None,
-    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("read:documents")),
 ) -> HTMLResponse:
     """Interactive document viewer with bounding box overlays and text passage highlighting."""
     with get_connection() as connection:
-        data = get_document_content_and_chunks(connection, document_id, current_user[1])
+        data = get_document_content_and_chunks(
+            connection, document_id, current_user[1], user_id=current_user[0]
+        )
     if data is None:
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -3107,6 +3353,8 @@ def _prepare_ask(
             connection,
             query_embedding,
             tenant_id=tenant_id,
+            user_id=current_user[0] if len(current_user) > 0 else None,
+            collection_id=request.collection_id,
             question=standalone_question,
             limit=retrieve_limit,
             document_id=request.document_id if target_document_ids is None else None,
@@ -4448,3 +4696,778 @@ def admin_update_tenant_tier(
     if not updated:
         raise HTTPException(status_code=404, detail="Tenant not found")
     return {"status": "updated", "tenant_id": str(tenant_id), "tier": body.tier}
+
+
+# ==============================================================================
+# Phase 8 Route Handlers: Collections, Graph View, Digests, Drafting,
+# Clustering, Playbooks, Approvals, Widgets, and Mobile Channels
+# ==============================================================================
+
+# --- Item 1: Shared Workspaces & Collections ---
+
+@router.post("/collections", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED)
+def create_new_collection(
+    request: CreateCollectionRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("write:documents")),
+) -> CollectionResponse:
+    with get_connection() as connection:
+        col = create_collection(
+            connection,
+            tenant_id=current_user[1],
+            name=request.name,
+            description=request.description,
+            is_private=request.is_private,
+            creator_user_id=current_user[0],
+        )
+    return CollectionResponse(
+        id=col.id,
+        tenant_id=col.tenant_id,
+        name=col.name,
+        description=col.description,
+        is_private=col.is_private,
+        created_at=col.created_at.isoformat(),
+        updated_at=col.updated_at.isoformat(),
+    )
+
+
+@router.get("/collections", response_model=list[CollectionResponse])
+def list_tenant_collections(
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("read:documents")),
+) -> list[CollectionResponse]:
+    with get_connection() as connection:
+        cols = list_collections(connection, current_user[1], user_id=current_user[0])
+    return [
+        CollectionResponse(
+            id=c.id,
+            tenant_id=c.tenant_id,
+            name=c.name,
+            description=c.description,
+            is_private=c.is_private,
+            created_at=c.created_at.isoformat(),
+            updated_at=c.updated_at.isoformat(),
+        )
+        for c in cols
+    ]
+
+
+@router.get("/collections/{collection_id}", response_model=CollectionResponse)
+def get_collection_detail(
+    collection_id: UUID,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("read:documents")),
+) -> CollectionResponse:
+    with get_connection() as connection:
+        col = get_collection(connection, collection_id, current_user[1])
+        if col is None or not check_user_collection_access(connection, collection_id, current_user[0], current_user[1]):
+            raise HTTPException(status_code=404, detail="Collection not found")
+    return CollectionResponse(
+        id=col.id,
+        tenant_id=col.tenant_id,
+        name=col.name,
+        description=col.description,
+        is_private=col.is_private,
+        created_at=col.created_at.isoformat(),
+        updated_at=col.updated_at.isoformat(),
+    )
+
+
+@router.post("/collections/{collection_id}/documents", status_code=status.HTTP_204_NO_CONTENT)
+def add_doc_to_collection(
+    collection_id: UUID,
+    request: AddCollectionDocumentRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("write:documents")),
+) -> None:
+    with get_connection() as connection:
+        if not check_user_collection_access(connection, collection_id, current_user[0], current_user[1]):
+            raise HTTPException(status_code=404, detail="Collection not found or access denied")
+        add_document_to_collection(connection, collection_id, request.document_id, current_user[1])
+
+
+@router.delete("/collections/{collection_id}/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_doc_from_collection(
+    collection_id: UUID,
+    document_id: UUID,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("write:documents")),
+) -> None:
+    with get_connection() as connection:
+        if not check_user_collection_access(connection, collection_id, current_user[0], current_user[1]):
+            raise HTTPException(status_code=404, detail="Collection not found or access denied")
+        removed = remove_document_from_collection(connection, collection_id, document_id, current_user[1])
+        if not removed:
+            raise HTTPException(status_code=404, detail="Document not linked to this collection")
+
+
+@router.post("/collections/{collection_id}/members", status_code=status.HTTP_204_NO_CONTENT)
+def add_member_to_collection(
+    collection_id: UUID,
+    request: AddCollectionMemberRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("write:documents")),
+) -> None:
+    with get_connection() as connection:
+        if not check_user_collection_access(connection, collection_id, current_user[0], current_user[1]):
+            raise HTTPException(status_code=404, detail="Collection not found or access denied")
+        add_collection_member(connection, collection_id, request.user_id, current_user[1], role=request.role)
+
+
+@router.delete("/collections/{collection_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_member_from_collection(
+    collection_id: UUID,
+    user_id: UUID,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("write:documents")),
+) -> None:
+    with get_connection() as connection:
+        if not check_user_collection_access(connection, collection_id, current_user[0], current_user[1]):
+            raise HTTPException(status_code=404, detail="Collection not found or access denied")
+        removed = remove_collection_member(connection, collection_id, user_id, current_user[1])
+        if not removed:
+            raise HTTPException(status_code=404, detail="Member not found in collection")
+
+
+# --- Item 2: Knowledge Graph View (Front-End Only) ---
+
+def _render_graph_view_html(nonce: str = "") -> str:
+    nonce_attr = f' nonce="{nonce}"' if nonce else ""
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>KnowledgeForge AI — Knowledge Graph Explorer</title>
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }}
+    .header {{ display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 15px; margin-bottom: 20px; }}
+    .controls {{ display: flex; gap: 10px; margin-bottom: 20px; }}
+    input, button {{ padding: 8px 12px; border-radius: 6px; border: 1px solid #475569; background: #1e293b; color: #fff; font-size: 14px; }}
+    button {{ background: #2563eb; cursor: pointer; font-weight: 500; border: none; }}
+    #graph-viewport {{ width: 100%; height: 600px; background: #1e293b; border-radius: 8px; border: 1px solid #334155; position: relative; overflow: hidden; }}
+    .node {{ position: absolute; padding: 8px 14px; background: #3b82f6; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: grab; transform: translate(-50%, -50%); box-shadow: 0 4px 6px rgba(0,0,0,0.3); }}
+    .edge-label {{ position: absolute; font-size: 11px; color: #94a3b8; background: rgba(15,23,42,0.8); padding: 2px 6px; border-radius: 4px; pointer-events: none; }}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2>Knowledge Graph Visualization</h2>
+    <span style="color: #94a3b8; font-size: 13px;">Consumes audited /graph/query backend</span>
+  </div>
+  <div class="controls">
+    <input type="text" id="seed-input" placeholder="Seed entity name (e.g. Acme Corp)" style="width: 300px;">
+    <button id="query-btn">Explore Graph</button>
+  </div>
+  <div id="graph-viewport">
+    <svg id="edge-layer" style="width:100%; height:100%; position:absolute; top:0; left:0; pointer-events:none;"></svg>
+    <div id="node-layer"></div>
+  </div>
+  <script{nonce_attr}>
+    document.getElementById("query-btn").addEventListener("click", function() {{
+      var seed = document.getElementById("seed-input").value.trim();
+      if (!seed) return;
+      fetch("/graph/query", {{
+        method: "POST",
+        headers: {{ "Content-Type": "application/json" }},
+        body: JSON.stringify({{ seed_entities: [seed], max_depth: 2, limit: 30 }})
+      }})
+      .then(function(res) {{ return res.json(); }})
+      .then(function(data) {{
+        renderGraph(data.paths || []);
+      }});
+    }});
+
+    function renderGraph(paths) {{
+      var nodeLayer = document.getElementById("node-layer");
+      nodeLayer.innerHTML = "";
+      var nodes = new Set();
+      paths.forEach(function(p) {{ nodes.add(p.source_name); nodes.add(p.target_name); }});
+      var arr = Array.from(nodes);
+      var width = document.getElementById("graph-viewport").clientWidth;
+      var height = document.getElementById("graph-viewport").clientHeight;
+      var radius = Math.min(width, height) / 2.5;
+      arr.forEach(function(name, i) {{
+        var angle = (i / arr.length) * 2 * Math.PI;
+        var x = width / 2 + radius * Math.cos(angle);
+        var y = height / 2 + radius * Math.sin(angle);
+        var el = document.createElement("div");
+        el.className = "node";
+        el.innerText = name;
+        el.style.left = x + "px";
+        el.style.top = y + "px";
+        nodeLayer.appendChild(el);
+      }});
+    }}
+  </script>
+</body>
+</html>"""
+
+
+@router.get("/graph/view", response_class=HTMLResponse)
+def graph_view_html(
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> HTMLResponse:
+    nonce = secrets.token_urlsafe(16)
+    html_body = _render_graph_view_html(nonce)
+    csp = (
+        f"default-src 'self'; script-src 'self' 'nonce-{nonce}'; "
+        f"style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
+    )
+    return HTMLResponse(content=html_body, headers={"Content-Security-Policy": csp})
+
+
+# --- Item 3: Recurring Activity Digests ---
+
+@router.get("/tenant/digest", response_model=DigestSettingsResponse)
+def get_digest_settings(
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> DigestSettingsResponse:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT tenant_id, frequency, enabled, recipient_emails, last_sent_at, updated_at
+                FROM tenant_digest_settings WHERE tenant_id = %s
+                """,
+                (current_user[1],),
+            )
+            r = cursor.fetchone()
+    if r is None:
+        return DigestSettingsResponse(
+            tenant_id=current_user[1],
+            frequency="daily",
+            enabled=False,
+            recipient_emails=[],
+            last_sent_at=None,
+            updated_at=datetime.utcnow().isoformat(),
+        )
+    return DigestSettingsResponse(
+        tenant_id=UUID(str(r[0])),
+        frequency=str(r[1]),
+        enabled=bool(r[2]),
+        recipient_emails=list(r[3]),
+        last_sent_at=r[4].isoformat() if r[4] else None,
+        updated_at=r[5].isoformat() if r[5] else datetime.utcnow().isoformat(),
+    )
+
+
+@router.put("/tenant/digest", response_model=DigestSettingsResponse)
+def update_digest_settings(
+    request: DigestSettingsRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> DigestSettingsResponse:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO tenant_digest_settings (tenant_id, frequency, enabled, recipient_emails, updated_at)
+                VALUES (%s, %s, %s, %s, now())
+                ON CONFLICT (tenant_id)
+                DO UPDATE SET frequency = EXCLUDED.frequency, enabled = EXCLUDED.enabled,
+                              recipient_emails = EXCLUDED.recipient_emails, updated_at = now()
+                RETURNING tenant_id, frequency, enabled, recipient_emails, last_sent_at, updated_at
+                """,
+                (current_user[1], request.frequency, request.enabled, request.recipient_emails),
+            )
+            r = cursor.fetchone()
+    return DigestSettingsResponse(
+        tenant_id=UUID(str(r[0])),
+        frequency=str(r[1]),
+        enabled=bool(r[2]),
+        recipient_emails=list(r[3]),
+        last_sent_at=r[4].isoformat() if r[4] else None,
+        updated_at=r[5].isoformat(),
+    )
+
+
+@router.post("/tenant/digest/trigger")
+def trigger_digest_delivery(
+    dry_run: bool = False,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> dict:
+    with get_connection() as connection:
+        sent = run_digest_job(connection, dry_run=dry_run, force=True)
+    return {"status": "success", "digests_delivered": sent, "dry_run": dry_run}
+
+
+# --- Item 4: Document Drafting from Context ---
+
+@router.post("/ask/draft", response_model=DraftResponse)
+def draft_document_from_context(
+    request: DraftRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("query:ask")),
+) -> DraftResponse:
+    settings = get_settings()
+    limiter.check(current_user[1], "draft", settings.ask_rate_limit_per_minute)
+
+    token_budget = get_token_budget()
+    estimated_tokens = 2000
+    reserved = False
+    if token_budget is not None:
+        token_limit, _, _, _ = get_tenant_budget_limits(current_user[1])
+        allowed, current_usage, _ = token_budget.check_and_reserve(
+            str(current_user[1]), estimated_tokens, limit=token_limit
+        )
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Daily token budget exceeded: {current_usage}/{token_limit}",
+            )
+        reserved = True
+
+    try:
+        # Retrieve context
+        with get_connection() as connection:
+            chunks_raw = retrieve_chunks(
+                connection,
+                [0.0] * 768,  # retrieve by document filter or top relevant
+                tenant_id=current_user[1],
+                user_id=current_user[0],
+                collection_id=request.collection_id,
+                document_ids=request.document_ids,
+                limit=10,
+            )
+        labeled_chunks = [
+            LabeledChunk(label=f"doc {i+1}", chunk=c)
+            for i, (_, _, c) in enumerate(chunks_raw)
+        ]
+
+        generator = GeminiTextGenerator(_gemini_client(), settings.gemini_model)
+        draft_res = generate_draft(
+            generator,
+            title=request.title,
+            document_type=request.document_type,
+            user_instructions=request.user_instructions,
+            chunks=labeled_chunks,
+        )
+
+        if token_budget is not None and reserved:
+            token_budget.reconcile(str(current_user[1]), draft_res.total_tokens)
+            reserved = False
+
+        citations_list = [
+            {"document_index": c.document_index, "page": c.page}
+            for c in draft_res.citations
+        ]
+
+        return DraftResponse(
+            title=draft_res.title,
+            document_type=draft_res.document_type,
+            content=draft_res.content,
+            citations=citations_list,
+            grounded=draft_res.grounded,
+            input_tokens=draft_res.input_tokens,
+            output_tokens=draft_res.output_tokens,
+            total_tokens=draft_res.total_tokens,
+        )
+    except Exception:
+        if token_budget is not None and reserved:
+            token_budget.release_reservation(str(current_user[1]), estimated_tokens)
+        raise
+
+
+# --- Item 5: Auto-Clustering and Tagging ---
+
+@router.post("/clusters/generate", response_model=list[ClusterResponse])
+def generate_clusters(
+    similarity_threshold: float = 0.70,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> list[ClusterResponse]:
+    with get_connection() as connection:
+        clusters = generate_suggested_clusters(
+            connection, current_user[1], similarity_threshold=similarity_threshold
+        )
+    return [
+        ClusterResponse(
+            id=c.id,
+            name=c.name,
+            document_ids=c.document_ids,
+            suggested_tags=c.suggested_tags,
+            status=c.status,
+            confirmed_collection_id=c.confirmed_collection_id,
+            created_at=c.created_at.isoformat(),
+        )
+        for c in clusters
+    ]
+
+
+@router.get("/clusters", response_model=list[ClusterResponse])
+def list_clusters(
+    status_filter: str | None = None,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> list[ClusterResponse]:
+    with get_connection() as connection:
+        clusters = list_document_clusters(connection, current_user[1], status_filter=status_filter)
+    return [
+        ClusterResponse(
+            id=c.id,
+            name=c.name,
+            document_ids=c.document_ids,
+            suggested_tags=c.suggested_tags,
+            status=c.status,
+            confirmed_collection_id=c.confirmed_collection_id,
+            created_at=c.created_at.isoformat(),
+        )
+        for c in clusters
+    ]
+
+
+@router.post("/clusters/{cluster_id}/confirm")
+def confirm_suggested_cluster(
+    cluster_id: UUID,
+    body: ConfirmClusterRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> dict:
+    with get_connection() as connection:
+        collection_id = confirm_cluster(
+            connection,
+            cluster_id,
+            current_user[1],
+            current_user[0],
+            create_collection_flag=body.create_collection,
+            apply_tags_flag=body.apply_tags,
+        )
+        if collection_id is None:
+            raise HTTPException(status_code=404, detail="Cluster not found or already processed")
+    return {
+        "status": "confirmed",
+        "cluster_id": str(cluster_id),
+        "confirmed_collection_id": str(collection_id) if collection_id else None,
+    }
+
+
+@router.post("/clusters/{cluster_id}/dismiss")
+def dismiss_suggested_cluster(
+    cluster_id: UUID,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> dict:
+    with get_connection() as connection:
+        dismissed = dismiss_cluster(connection, cluster_id, current_user[1], current_user[0])
+        if not dismissed:
+            raise HTTPException(status_code=404, detail="Cluster not found or already processed")
+    return {"status": "dismissed", "cluster_id": str(cluster_id)}
+
+
+# --- Item 6: Saved Playbooks ---
+
+@router.post("/playbooks", response_model=PlaybookResponse, status_code=status.HTTP_201_CREATED)
+def create_new_playbook(
+    request: CreatePlaybookRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> PlaybookResponse:
+    with get_connection() as connection:
+        pb = create_playbook(
+            connection,
+            tenant_id=current_user[1],
+            name=request.name,
+            questions=request.questions,
+            doc_type=request.doc_type,
+            schema_type=request.schema_type,
+        )
+    return PlaybookResponse(
+        id=pb.id,
+        tenant_id=pb.tenant_id,
+        name=pb.name,
+        doc_type=pb.doc_type,
+        schema_type=pb.schema_type,
+        questions=pb.questions,
+        is_active=pb.is_active,
+        created_at=pb.created_at.isoformat(),
+    )
+
+
+@router.get("/playbooks", response_model=list[PlaybookResponse])
+def list_tenant_playbooks(
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> list[PlaybookResponse]:
+    with get_connection() as connection:
+        pbs = list_playbooks(connection, current_user[1])
+    return [
+        PlaybookResponse(
+            id=p.id,
+            tenant_id=p.tenant_id,
+            name=p.name,
+            doc_type=p.doc_type,
+            schema_type=p.schema_type,
+            questions=p.questions,
+            is_active=p.is_active,
+            created_at=p.created_at.isoformat(),
+        )
+        for p in pbs
+    ]
+
+
+@router.get("/documents/{document_id}/playbooks", response_model=list[PlaybookRunResponse])
+def get_document_playbooks(
+    document_id: UUID,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("read:documents")),
+) -> list[PlaybookRunResponse]:
+    with get_connection() as connection:
+        runs = get_document_playbook_results(connection, document_id, current_user[1])
+    return [
+        PlaybookRunResponse(
+            id=r.id,
+            playbook_id=r.playbook_id,
+            document_id=r.document_id,
+            question=r.question,
+            answer=r.answer,
+            citations=r.citations,
+            status=r.status,
+            tokens_used=r.tokens_used,
+            created_at=r.created_at.isoformat(),
+        )
+        for r in runs
+    ]
+
+
+@router.post("/documents/{document_id}/playbooks/run", response_model=list[PlaybookRunResponse])
+def run_playbooks_for_doc(
+    document_id: UUID,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> list[PlaybookRunResponse]:
+    settings = get_settings()
+    token_budget = get_token_budget()
+    with get_connection() as connection:
+        doc = get_document_detail(connection, document_id, current_user[1])
+        if doc is None:
+            raise HTTPException(status_code=404, detail="Document not found")
+        generator = GeminiTextGenerator(_gemini_client(), settings.gemini_model)
+        from knowledgeforge.ingestion.embed import GeminiEmbeddingProvider
+        embedding_provider = GeminiEmbeddingProvider(_gemini_client(), settings.gemini_embedding_model)
+
+        runs = trigger_matching_playbooks(
+            connection,
+            tenant_id=current_user[1],
+            document_id=document_id,
+            doc_type=doc.doc_type,
+            generator=generator,
+            embedding_provider=embedding_provider,
+            token_budget=token_budget,
+        )
+    return [
+        PlaybookRunResponse(
+            id=r.id,
+            playbook_id=r.playbook_id,
+            document_id=r.document_id,
+            question=r.question,
+            answer=r.answer,
+            citations=r.citations,
+            status=r.status,
+            tokens_used=r.tokens_used,
+            created_at=r.created_at.isoformat(),
+        )
+        for r in runs
+    ]
+
+
+# --- Item 7: Approval Workflows ---
+
+@router.post("/approvals/chains", response_model=ApprovalChainResponse, status_code=status.HTTP_201_CREATED)
+def create_chain(
+    request: CreateApprovalChainRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> ApprovalChainResponse:
+    with get_connection() as connection:
+        chain = create_approval_chain(
+            connection, tenant_id=current_user[1], name=request.name, steps=request.steps
+        )
+    return ApprovalChainResponse(
+        id=chain.id,
+        name=chain.name,
+        steps=chain.steps,
+        created_at=chain.created_at.isoformat(),
+    )
+
+
+@router.post("/documents/{document_id}/approvals/start", response_model=ApprovalInstanceResponse)
+def start_approval(
+    document_id: UUID,
+    request: StartApprovalRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> ApprovalInstanceResponse:
+    with get_connection() as connection:
+        inst = start_document_approval(
+            connection, tenant_id=current_user[1], document_id=document_id, chain_id=request.chain_id
+        )
+    return ApprovalInstanceResponse(
+        id=inst.id,
+        tenant_id=inst.tenant_id,
+        document_id=inst.document_id,
+        chain_id=inst.chain_id,
+        current_step_index=inst.current_step_index,
+        total_steps=inst.total_steps,
+        status=inst.status,
+        created_at=inst.created_at.isoformat(),
+        updated_at=inst.updated_at.isoformat(),
+    )
+
+
+@router.post("/documents/{document_id}/approvals/action", response_model=ApprovalInstanceResponse)
+def act_on_approval(
+    document_id: UUID,
+    instance_id: UUID,
+    request: ApprovalActionRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> ApprovalInstanceResponse:
+    with get_connection() as connection:
+        inst = process_approval_action(
+            connection,
+            tenant_id=current_user[1],
+            instance_id=instance_id,
+            actor_id=current_user[0],
+            actor_role=current_user[2],
+            action=request.action,
+            comments=request.comments,
+        )
+    return ApprovalInstanceResponse(
+        id=inst.id,
+        tenant_id=inst.tenant_id,
+        document_id=inst.document_id,
+        chain_id=inst.chain_id,
+        current_step_index=inst.current_step_index,
+        total_steps=inst.total_steps,
+        status=inst.status,
+        created_at=inst.created_at.isoformat(),
+        updated_at=inst.updated_at.isoformat(),
+    )
+
+
+@router.get("/documents/{document_id}/approvals", response_model=list[ApprovalInstanceResponse])
+def get_approvals(
+    document_id: UUID,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_scope("read:documents")),
+) -> list[ApprovalInstanceResponse]:
+    with get_connection() as connection:
+        instances = get_document_approval_instances(connection, document_id, current_user[1])
+    return [
+        ApprovalInstanceResponse(
+            id=i.id,
+            tenant_id=i.tenant_id,
+            document_id=i.document_id,
+            chain_id=i.chain_id,
+            current_step_index=i.current_step_index,
+            total_steps=i.total_steps,
+            status=i.status,
+            created_at=i.created_at.isoformat(),
+            updated_at=i.updated_at.isoformat(),
+        )
+        for i in instances
+    ]
+
+
+# --- Item 9: Embeddable White-Label Widget ---
+
+@router.post("/widgets", response_model=WidgetResponse, status_code=status.HTTP_201_CREATED)
+def create_widget(
+    request: CreateWidgetRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(require_owner),
+) -> WidgetResponse:
+    with get_connection() as connection:
+        w = create_tenant_widget(
+            connection,
+            tenant_id=current_user[1],
+            collection_id=request.collection_id,
+            api_key_id=request.api_key_id,
+            name=request.name,
+            allowed_origins=request.allowed_origins,
+            primary_color=request.primary_color,
+            rate_limit_per_minute=request.rate_limit_per_minute,
+            daily_budget_tokens=request.daily_budget_tokens,
+        )
+    return WidgetResponse(
+        id=w.id,
+        collection_id=w.collection_id,
+        api_key_id=w.api_key_id,
+        name=w.name,
+        allowed_origins=w.allowed_origins,
+        primary_color=w.primary_color,
+        rate_limit_per_minute=w.rate_limit_per_minute,
+        daily_budget_tokens=w.daily_budget_tokens,
+        is_active=w.is_active,
+        created_at=w.created_at.isoformat(),
+    )
+
+
+@router.post("/widget/ask", response_model=WidgetAskResponse)
+def widget_ask(
+    request: WidgetAskRequest,
+    http_request: Request,
+    api_key_auth: tuple[UUID, UUID, str, list[str]] = Depends(get_current_api_key),
+) -> WidgetAskResponse:
+    """Public-facing widget Q&A query with strict origin and collection scoping."""
+    origin = http_request.headers.get("origin")
+    api_key_id, tenant_id, _, scopes = api_key_auth
+
+    with get_connection() as connection:
+        widget = get_widget_by_api_key(connection, api_key_id)
+        if widget is None:
+            raise HTTPException(status_code=403, detail="No active widget associated with this API key")
+        
+        # 1. Validate CORS origin strictly against configured origins (no wildcards)
+        validate_widget_origin(widget, origin)
+
+        # 2. Check dedicated widget rate limiter to guard against spikes
+        client_ip = http_request.client.host if http_request.client else "unknown"
+        check_widget_rate_limit(widget, client_ip)
+
+        # 3. Retrieve chunks scoped STRICTLY to the widget's collection
+        chunks = retrieve_chunks(
+            connection,
+            [0.0] * 768,
+            tenant_id=tenant_id,
+            collection_id=widget.collection_id,
+            question=request.question,
+            limit=5,
+        )
+
+    settings = get_settings()
+    generator = GeminiTextGenerator(_gemini_client(), settings.gemini_model)
+    labeled = [LabeledChunk(label=f"doc {i+1}", chunk=c) for i, (_, _, c) in enumerate(chunks)]
+    answer = generate_answer(generator, request.question, labeled)
+
+    citations = [
+        {"document_index": c.document_index, "page": c.page}
+        for c in answer.citations
+    ]
+    return WidgetAskResponse(answer=answer.answer, citations=citations)
+
+
+@router.get("/widget/embed.js", response_class=Response)
+def get_widget_embed_script(
+    widget_id: UUID,
+    http_request: Request,
+) -> Response:
+    script_content = generate_embed_js(widget_id, str(http_request.base_url))
+    return Response(content=script_content, media_type="application/javascript")
+
+
+# --- Item 10: Mobile Devices & Push Channels ---
+
+@router.post("/devices/register", response_model=DeviceResponse)
+def register_device(
+    request: RegisterDeviceRequest,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> DeviceResponse:
+    with get_connection() as connection:
+        dev = register_user_device(
+            connection,
+            user_id=current_user[0],
+            tenant_id=current_user[1],
+            platform=request.platform,
+            device_token=request.device_token,
+        )
+    return DeviceResponse(
+        id=dev.id,
+        platform=dev.platform,
+        device_token=dev.device_token,
+        is_active=dev.is_active,
+        last_seen_at=dev.last_seen_at.isoformat(),
+    )
+
+
+@router.post("/devices/unregister", status_code=status.HTTP_204_NO_CONTENT)
+def unregister_device(
+    device_token: str,
+    current_user: tuple[UUID, UUID, str, bool] = Depends(get_current_user),
+) -> None:
+    with get_connection() as connection:
+        unregister_user_device(
+            connection,
+            user_id=current_user[0],
+            tenant_id=current_user[1],
+            device_token=device_token,
+        )
+

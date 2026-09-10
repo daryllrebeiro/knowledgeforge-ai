@@ -14,6 +14,8 @@ def retrieve_chunks(
     query_embedding: Sequence[float],
     *,
     tenant_id: UUID,
+    user_id: UUID | None = None,
+    collection_id: UUID | None = None,
     question: str = "",
     limit: int = 5,
     doc_type: str | None = None,
@@ -73,6 +75,41 @@ def retrieve_chunks(
     if created_before is not None:
         clauses.append("d.created_at <= %s")
         params.append(created_before)
+    if collection_id is not None:
+        clauses.append(
+            "EXISTS (SELECT 1 FROM collection_documents cd WHERE cd.document_id = d.id AND cd.collection_id = %s)"
+        )
+        params.append(collection_id)
+        if user_id is not None:
+            clauses.append(
+                """(
+                    NOT EXISTS (
+                        SELECT 1 FROM collections col
+                        WHERE col.id = %s AND col.is_private = true
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM collection_memberships cm
+                        WHERE cm.collection_id = %s AND cm.user_id = %s
+                    )
+                )"""
+            )
+            params.extend([collection_id, collection_id, user_id])
+    elif user_id is not None:
+        clauses.append(
+            """(
+                NOT EXISTS (
+                    SELECT 1 FROM collection_documents cd
+                    JOIN collections col ON col.id = cd.collection_id
+                    WHERE cd.document_id = d.id AND col.is_private = true
+                )
+                OR EXISTS (
+                    SELECT 1 FROM collection_documents cd
+                    JOIN collection_memberships cm ON cm.collection_id = cd.collection_id
+                    WHERE cd.document_id = d.id AND cm.user_id = %s
+                )
+            )"""
+        )
+        params.append(user_id)
     filters = "WHERE " + " AND ".join(clauses)
     filter_params = tuple(params)
     if hybrid:

@@ -205,9 +205,32 @@ def get_current_user(
         role = get_user_role_for_tenant(identity[0], identity[1]) or "member"
         is_platform_admin = get_user_platform_admin(identity[0])
         request.state.user_role = role
-        request.state.is_platform_admin = is_platform_admin
         return identity[0], identity[1], role, is_platform_admin
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
+
+def get_current_api_key(
+    request: Request,
+) -> tuple[UUID, UUID, UUID, list[str]]:
+    """Return (key_id, user_id, tenant_id, scopes) from x-api-key header."""
+    api_key = request.headers.get("x-api-key")
+    if not api_key:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing API key")
+    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, user_id, tenant_id, scopes FROM api_keys WHERE key_hash = %s AND revoked_at IS NULL",
+                (key_hash,),
+            )
+            row = cursor.fetchone()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+    key_id = UUID(str(row[0]))
+    user_id = UUID(str(row[1]))
+    tenant_id = UUID(str(row[2]))
+    scopes = list(row[3]) if len(row) > 3 and row[3] is not None else ["*"]
+    return key_id, user_id, tenant_id, scopes
 
 
 def require_tenant_role(allowed_roles: list[Role]):

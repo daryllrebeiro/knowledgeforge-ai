@@ -1,5 +1,6 @@
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any, NamedTuple
 from uuid import UUID
 
@@ -27,6 +28,15 @@ class DocumentDetailRow(NamedTuple):
     version: int
     superseded_by: str | None
     chunk_count: int
+
+
+class ChunkPreviewRow(NamedTuple):
+    page: int
+    section: str | None
+    text: str
+    start_char: int | None = None
+    end_char: int | None = None
+    bounding_boxes: list[Any] = []
 
 
 def store_document(
@@ -174,23 +184,66 @@ def list_documents(
     connection: Connection,
     tenant_id: UUID,
     *,
+    user_id: UUID | None = None,
+    collection_id: UUID | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[DocumentSummaryRow]:
-    """Return document summaries newest first."""
+    """Return document summaries newest first, enforcing collection isolation in SQL."""
     if limit <= 0 or offset < 0:
         raise ValueError("limit must be positive and offset non-negative")
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, title, doc_type, status, version, superseded_by
-            FROM documents
-            WHERE tenant_id = %s
-            ORDER BY created_at DESC, id DESC
-            LIMIT %s OFFSET %s
-            """,
-            (tenant_id, limit, offset),
+    
+    clauses = ["d.tenant_id = %s"]
+    params: list[object] = [tenant_id]
+
+    if collection_id is not None:
+        clauses.append(
+            "EXISTS (SELECT 1 FROM collection_documents cd WHERE cd.document_id = d.id AND cd.collection_id = %s)"
         )
+        params.append(collection_id)
+        if user_id is not None:
+            clauses.append(
+                """(
+                    NOT EXISTS (
+                        SELECT 1 FROM collections col
+                        WHERE col.id = %s AND col.is_private = true
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM collection_memberships cm
+                        WHERE cm.collection_id = %s AND cm.user_id = %s
+                    )
+                )"""
+            )
+            params.extend([collection_id, collection_id, user_id])
+    elif user_id is not None:
+        clauses.append(
+            """(
+                NOT EXISTS (
+                    SELECT 1 FROM collection_documents cd
+                    JOIN collections col ON col.id = cd.collection_id
+                    WHERE cd.document_id = d.id AND col.is_private = true
+                )
+                OR EXISTS (
+                    SELECT 1 FROM collection_documents cd
+                    JOIN collection_memberships cm ON cm.collection_id = cd.collection_id
+                    WHERE cd.document_id = d.id AND cm.user_id = %s
+                )
+            )"""
+        )
+        params.append(user_id)
+
+    where_clause = "WHERE " + " AND ".join(clauses)
+    query = f"""
+        SELECT d.id, d.title, d.doc_type, d.status, d.version, d.superseded_by
+        FROM documents d
+        {where_clause}
+        ORDER BY d.created_at DESC, d.id DESC
+        LIMIT %s OFFSET %s
+    """
+    params.extend([limit, offset])
+
+    with connection.cursor() as cursor:
+        cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
     return [
         DocumentSummaryRow(
@@ -206,19 +259,39 @@ def list_documents(
 
 
 def get_document_detail(
-    connection: Connection, document_id: UUID, tenant_id: UUID
+    connection: Connection, document_id: UUID, tenant_id: UUID, *, user_id: UUID | None = None
 ) -> DocumentDetailRow | None:
+    clauses = ["d.id = %s", "d.tenant_id = %s"]
+    params: list[object] = [document_id, tenant_id]
+    if user_id is not None:
+        clauses.append(
+            """(
+                NOT EXISTS (
+                    SELECT 1 FROM collection_documents cd
+                    JOIN collections col ON col.id = cd.collection_id
+                    WHERE cd.document_id = d.id AND col.is_private = true
+                )
+                OR EXISTS (
+                    SELECT 1 FROM collection_documents cd
+                    JOIN collection_memberships cm ON cm.collection_id = cd.collection_id
+                    WHERE cd.document_id = d.id AND cm.user_id = %s
+                )
+            )"""
+        )
+        params.append(user_id)
+    where_clause = "WHERE " + " AND ".join(clauses)
+
     with connection.cursor() as cursor:
         cursor.execute(
-            """
+            f"""
             SELECT d.id, d.title, d.source_filename, d.doc_type, d.status, d.version,
                    d.superseded_by, count(c.id) AS chunk_count
             FROM documents AS d
             LEFT JOIN chunks AS c ON c.document_id = d.id
-            WHERE d.id = %s AND d.tenant_id = %s
+            {where_clause}
             GROUP BY d.id
             """,
-            (document_id, tenant_id),
+            tuple(params),
         )
         row = cursor.fetchone()
     if row is None:
@@ -235,16 +308,8 @@ def get_document_detail(
     )
 
 
-class ChunkPreviewRow(NamedTuple):
-    page: int
-    section: str | None
-    text: str
-    start_char: int | None = None
-    end_char: int | None = None
-    bounding_boxes: list[dict[str, Any]] = []
-
-
-class DocumentContentData(NamedTuple):
+@dataclass(frozen=True)
+class DocumentContentData:
     document_id: UUID
     title: str
     doc_type: str
@@ -256,12 +321,34 @@ def get_document_content_and_chunks(
     connection: Connection,
     document_id: UUID,
     tenant_id: UUID,
+    *,
+    user_id: UUID | None = None,
 ) -> DocumentContentData | None:
     """Retrieve document metadata and all chunks with character offsets and bounding boxes."""
+    clauses = ["id = %s", "tenant_id = %s"]
+    params: list[object] = [document_id, tenant_id]
+    if user_id is not None:
+        clauses.append(
+            """(
+                NOT EXISTS (
+                    SELECT 1 FROM collection_documents cd
+                    JOIN collections col ON col.id = cd.collection_id
+                    WHERE cd.document_id = documents.id AND col.is_private = true
+                )
+                OR EXISTS (
+                    SELECT 1 FROM collection_documents cd
+                    JOIN collection_memberships cm ON cm.collection_id = cd.collection_id
+                    WHERE cd.document_id = documents.id AND cm.user_id = %s
+                )
+            )"""
+        )
+        params.append(user_id)
+    where_clause = "WHERE " + " AND ".join(clauses)
+
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT title, doc_type, storage_uri FROM documents WHERE id = %s AND tenant_id = %s",
-            (document_id, tenant_id),
+            f"SELECT title, doc_type, storage_uri FROM documents {where_clause}",
+            tuple(params),
         )
         doc_row = cursor.fetchone()
         if doc_row is None:
@@ -306,19 +393,39 @@ def list_document_chunks(
     document_id: UUID,
     tenant_id: UUID,
     *,
+    user_id: UUID | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> list[ChunkPreviewRow] | None:
     """Preview what was indexed for one document ("what did we index?").
 
-    Returns None when the document does not belong to the tenant.
+    Returns None when the document does not belong to the tenant or is in a private collection the user cannot access.
     """
     if limit <= 0 or offset < 0:
         raise ValueError("limit must be positive and offset non-negative")
+    clauses = ["id = %s", "tenant_id = %s"]
+    params: list[object] = [document_id, tenant_id]
+    if user_id is not None:
+        clauses.append(
+            """(
+                NOT EXISTS (
+                    SELECT 1 FROM collection_documents cd
+                    JOIN collections col ON col.id = cd.collection_id
+                    WHERE cd.document_id = documents.id AND col.is_private = true
+                )
+                OR EXISTS (
+                    SELECT 1 FROM collection_documents cd
+                    JOIN collection_memberships cm ON cm.collection_id = cd.collection_id
+                    WHERE cd.document_id = documents.id AND cm.user_id = %s
+                )
+            )"""
+        )
+        params.append(user_id)
+    where_clause = "WHERE " + " AND ".join(clauses)
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT 1 FROM documents WHERE id = %s AND tenant_id = %s",
-            (document_id, tenant_id),
+            f"SELECT 1 FROM documents {where_clause}",
+            tuple(params),
         )
         if cursor.fetchone() is None:
             return None
